@@ -26,6 +26,8 @@ DB_PATH = Path(os.environ.get("DB_PATH", str(OUT_DIR / "resumos.db")))
 PORT = int(os.environ.get("PORT", "8000"))
 STATIC = Path(__file__).parent / "static"
 README_PATH = Path(os.environ.get("README_PATH", Path(__file__).parent / "README.md"))
+ASSETS_DIR = Path(os.environ.get("ASSETS_DIR", Path(__file__).parent / "assets"))   # imagens do README
+ASSET_RE = re.compile(r"^[A-Za-z0-9._-]+\.png$")
 
 PROMPT = ("Resuma o texto recebido, sempre em português. Responda somente com o "
           "resumo, sem saudações, perguntas ou comentários finais.")
@@ -598,6 +600,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._page(200, render_models(embed))
         if path == "/help":
             return self._page(200, render_help(embed))
+        if path.startswith("/assets/"):   # imagens que o README mostra na página de ajuda
+            name = path[len("/assets/"):]
+            f = ASSETS_DIR / name
+            if ASSET_RE.match(name) and f.is_file():
+                return self._send(200, f.read_bytes(), "image/png")
         if path == "/help.md" and README_PATH.is_file():
             return self._send(200, README_PATH.read_text(encoding="utf-8"),
                               "text/markdown; charset=utf-8")

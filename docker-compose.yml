@@ -48,6 +48,7 @@ services:
     volumes:
       - ./outputs:/outputs
       - ./README.md:/app/README.md:ro   # texto da página /help
+      - ./assets:/app/assets:ro         # imagens que o README mostra na /help
     restart: unless-stopped
 
 volumes:

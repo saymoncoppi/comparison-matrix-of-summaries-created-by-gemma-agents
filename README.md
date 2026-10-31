@@ -54,6 +54,40 @@ O status se mantém **sempre atualizado** com o [htmx](https://htmx.org): a pág
 
 O **Histórico** lista todos os resultados, do mais recente para o mais antigo: número, data, arquivo, tipo, se foi resumo ou comparação e os modelos usados. **Clique em uma linha** para abrir o relatório daquele registro dentro da mesma janela, com o botão "← Voltar" para retornar à lista.
 
+## Telas
+
+**Tela inicial:** escolha os modelos, anexe o arquivo e gere o relatório.
+
+![Tela inicial do chat](assets/home.png)
+
+**Análise em andamento:** o primeiro modelo concluiu e o segundo está carregando e lendo o texto, cada um com sua barra de progresso.
+
+![Comparação em andamento](assets/comparisson-first-model.png)
+
+**Análise concluída:** tempos de carga, leitura e geração por modelo, e os botões "Abrir relatório" e "Nova análise".
+
+![Comparação concluída](assets/comparisson-second-model.png)
+
+**Relatório:** a matriz de comparação dos modelos, aberta numa janela sobre o chat.
+
+![Relatório com a matriz de comparação](assets/comparisson-report.png)
+
+**Menu (⋮):** histórico, ajuda e o status do Ollama.
+
+![Menu com Histórico, Ajuda e o status do Ollama](assets/menu.png)
+
+**Histórico:** todas as execuções; clique em uma linha para abrir o relatório.
+
+![Histórico de resultados](assets/history.png)
+
+**Modelos instalados:** aberto ao clicar no status do Ollama quando ele está online.
+
+![Modelos instalados](assets/models.png)
+
+**Ajuda:** este README, dentro do chat.
+
+![Ajuda dentro do chat](assets/help.png)
+
 ## O relatório
 
 Cada relatório mostra o arquivo (tipo, tamanho, caracteres extraídos e contexto usado) e uma **matriz de comparação** com uma linha por modelo:
@@ -149,12 +183,15 @@ app/static/index.html     tela do chat (cartões, barras de progresso, menu e mo
 app/static/head.html      tema compartilhado (Tailwind + tokens do shadcn/ui)
 app/Dockerfile            imagem do chat (Python + poppler-utils)
 outputs/resumos.db        banco com os resultados
+assets/                   capturas de tela usadas neste README
+references/               material de apoio da live (guia do Ollama e links do evento)
 ```
 
 O shadcn/ui não oferece versão de CDN. As páginas usam o Tailwind via CDN com as cores e as classes de componentes do shadcn, escritas à mão.
 
 ## Outros arquivos da pasta
 
-- `ollama-gemma4-pdf.md`: passo a passo do Ollama com Gemma 4 mostrado na live.
-- `hacktoberfest-victor-gemma4.txt`: links do evento (live, slides, notebooks e guias do Gemma).
+- `references/ollama-gemma4-pdf.md`: guia do Ollama com Gemma 4 mostrado na live, do terminal até o chat, com as medições de desempenho na CPU.
+- `references/hacktoberfest-victor-gemma4.txt`: links do evento (live, slides, notebooks e guias do Gemma).
+- `assets/`: as capturas de tela da seção "Telas".
 - `RFID, Python e rastreabilidade no agro brasileiro.pdf` e `.docx`: documento de exemplo para testar.
