@@ -30,6 +30,12 @@
                color: hsl(var(--foreground)); border: 0; }
   .menu-item:hover, .menu-item:focus-visible { background: hsl(var(--accent)); outline: none; }
 
+  /* bolinha de status do Ollama */
+  .dot { width: 10px; height: 10px; flex: none; margin-right: 8px; border-radius: 9999px; background: #9ca3af; }
+  .dot-on  { background: #22c55e; box-shadow: 0 0 0 3px rgb(34 197 94 / .22); }
+  .dot-off { background: #ef4444; box-shadow: 0 0 0 3px rgb(239 68 68 / .22); }
+  .menu-sep { height: 1px; margin: 4px 0; background: hsl(var(--border)); }
+
   /* modal (dialog nativo) */
   dialog.modal { padding: 0; width: min(1100px, 95vw); height: min(85vh, 900px); max-width: none; max-height: none;
                  border: 1px solid hsl(var(--border)); border-radius: calc(var(--radius) + 4px);
@@ -48,16 +54,24 @@
       <p class="text-sm text-muted-foreground">Envie um PDF, TXT ou MD e receba um relatório HTML.</p>
     </div>
     <div class="flex items-center gap-2">
-      <button id="new-btn" type="button" class="btn btn-outline btn-sm">Nova análise</button>
       <div class="relative">
         <button id="menu-btn" type="button" class="btn btn-outline btn-sm" style="width:36px;padding:0"
                 aria-haspopup="menu" aria-expanded="false" aria-controls="menu" aria-label="Mais opções">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
             <circle cx="8" cy="3" r="1.5"/><circle cx="8" cy="8" r="1.5"/><circle cx="8" cy="13" r="1.5"/></svg>
         </button>
-        <div id="menu" role="menu" class="card absolute right-0 z-20 mt-2 hidden w-44 p-1" style="box-shadow:0 8px 24px rgb(0 0 0 / .15)">
+        <div id="menu" role="menu" class="card absolute right-0 z-20 mt-2 hidden w-80 p-1" style="box-shadow:0 8px 24px rgb(0 0 0 / .15)">
           <button type="button" role="menuitem" class="menu-item" data-open="/history" data-title="Histórico">Histórico</button>
           <button type="button" role="menuitem" class="menu-item" data-open="/help" data-title="Ajuda">Ajuda</button>
+          <div class="menu-sep" role="separator"></div>
+          <!-- htmx: consulta ao carregar, a cada 10 s (aba visível), ao voltar para a aba e ao abrir o menu.
+               Clique: online abre o modal de modelos; offline tenta de novo (ver script). -->
+          <button id="status-item" type="button" role="menuitem" class="menu-item"
+                  title="Online: ver modelos instalados · Offline: tentar de novo"
+                  hx-get="/fragments/ollama-status" hx-swap="innerHTML" hx-indicator="this"
+                  hx-trigger="load, every 10s [document.visibilityState==='visible'], visibilitychange[document.visibilityState==='visible'] from:document, refresh">
+            <span class="dot" aria-hidden="true"></span><span>Verificando Ollama…</span>
+          </button>
         </div>
       </div>
     </div>
@@ -100,6 +114,7 @@
   <iframe id="modal-frame" title="Conteúdo"></iframe>
 </dialog>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/1.9.12/htmx.min.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -110,7 +125,7 @@ const selected = new Set();
 
 function scroll() { const c = $('#chat'); c.scrollTop = c.scrollHeight; }
 function fmtSize(b) { return b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024).toFixed(1) + ' KB'; }
-function refreshButtons() { $('#send').disabled = busy || !file || selected.size === 0; $('#new-btn').disabled = busy; }
+function refreshButtons() { $('#send').disabled = busy || !file || selected.size === 0; }
 
 // ---- modal (histórico, ajuda e relatório) -----------------------------------
 const modal = $('#modal'), frame = $('#modal-frame');
@@ -126,7 +141,7 @@ frame.addEventListener('load', () => {
   let p; try { p = frame.contentWindow.location.pathname; } catch { return; }
   if (!p || p === 'blank') return;
   const m = p.match(/^\/reports\/(\d+)$/);
-  $('#modal-title').textContent = m ? 'Relatório #' + m[1] : p === '/history' ? 'Histórico' : p === '/help' ? 'Ajuda' : '';
+  $('#modal-title').textContent = m ? 'Relatório #' + m[1] : p === '/history' ? 'Histórico' : p === '/help' ? 'Ajuda' : p === '/models' ? 'Modelos instalados' : '';
   $('#modal-ext').href = p;
   $('#modal-back').classList.toggle('hidden', p === modalStart.split('?')[0]);
 });
@@ -138,8 +153,27 @@ modal.addEventListener('close', () => { frame.src = 'about:blank'; });
 // ---- menu de 3 pontinhos ------------------------------------------------------
 const menu = $('#menu'), menuBtn = $('#menu-btn');
 function setMenu(open) { menu.classList.toggle('hidden', !open); menuBtn.setAttribute('aria-expanded', open); }
-menuBtn.onclick = e => { e.stopPropagation(); setMenu(menu.classList.contains('hidden')); if (!menu.classList.contains('hidden')) menu.querySelector('[role=menuitem]').focus(); };
+menuBtn.onclick = e => {
+  e.stopPropagation(); setMenu(menu.classList.contains('hidden'));
+  if (!menu.classList.contains('hidden')) { menu.querySelector('[role=menuitem]').focus(); statusItem && window.htmx && htmx.trigger(statusItem, 'refresh'); }
+};
 menu.addEventListener('click', e => { const b = e.target.closest('[data-open]'); if (!b) return; setMenu(false); openModal(b.dataset.open, b.dataset.title); });
+
+// ---- status do Ollama (verde = online, vermelha = offline), mantido pelo htmx -----
+// O htmx só troca o conteúdo quando o servidor responde. Se o próprio chat sair do ar
+// (ou o htmx não carregar), mostramos isso em vez de deixar um "online" velho na tela.
+const statusItem = $('#status-item');
+function showStatus(state, text) {
+  statusItem.innerHTML = `<span class="dot dot-${state}" aria-hidden="true"></span><span></span>`;
+  statusItem.lastChild.textContent = text;
+}
+statusItem.addEventListener('click', () => {
+  if (statusItem.querySelector('.dot-on')) { setMenu(false); openModal('/models', 'Modelos instalados'); }
+  else if (window.htmx) htmx.trigger(statusItem, 'refresh');   // offline: tenta de novo
+});
+['htmx:sendError', 'htmx:responseError', 'htmx:timeout'].forEach(t =>
+  statusItem.addEventListener(t, () => showStatus('off', 'Servidor do chat inacessível')));
+setTimeout(() => { if (!window.htmx) showStatus('', 'Status indisponível (htmx não carregou)'); }, 6000);
 document.addEventListener('click', e => { if (!menu.contains(e.target)) setMenu(false); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.classList.contains('hidden')) { setMenu(false); menuBtn.focus(); } });
 
@@ -210,7 +244,6 @@ function newAnalysis() {
   $('#file-info').textContent = DROP_HINT; $('#file-info').classList.add('text-muted-foreground');
   refreshButtons();
 }
-$('#new-btn').onclick = newAnalysis;
 
 // ---- envio e stream de eventos --------------------------------------------------
 $('#form').addEventListener('submit', async e => {

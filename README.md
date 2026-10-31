@@ -37,13 +37,20 @@ Para parar: `docker compose down`. Os modelos e o banco continuam guardados.
    - ao carregar o modelo e ler o texto, ela fica em movimento contínuo (não há como saber quanto falta);
    - durante a geração, ela avança conforme os tokens são escritos. Esse avanço é uma **estimativa**, porque o tamanho final do resumo não é conhecido, e por isso ela não passa de 95% antes de a análise concluir. Ao terminar, a barra completa e some.
 5. **Abra o relatório.** Ao terminar surge o botão "Abrir relatório", que mostra o relatório numa janela (modal) sobre o chat.
-6. **Comece outra.** O botão **Nova análise** (no topo, ou ao lado de "Abrir relatório") limpa a conversa e o arquivo escolhido e mantém os modelos marcados. Ele fica desativado enquanto uma análise está rodando.
+6. **Comece outra.** O botão **Nova análise**, ao lado de "Abrir relatório", limpa a conversa e o arquivo escolhido e mantém os modelos marcados.
 
 O chat avisa quando o arquivo não pode ser usado: tipo errado, PDF escaneado (sem texto), arquivo vazio, binário disfarçado de texto ou maior que o limite.
 
 ## Menu, histórico e ajuda
 
-O botão de **três pontinhos** (⋮), no topo do chat, abre um menu com **Histórico** e **Ajuda**. Os dois abrem numa janela (modal) sobre o chat. Para fechar, use o ✕, a tecla `Esc` ou clique fora da janela. O botão "Abrir em nova aba" abre a mesma página fora do chat.
+O botão de **três pontinhos** (⋮), no topo do chat, abre um menu com **Histórico**, **Ajuda** e o **status do Ollama**. Histórico e Ajuda abrem numa janela (modal) sobre o chat. O status mostra uma bolinha **verde** (online, com a versão e o número de modelos instalados) ou **vermelha** (offline). 
+
+O status se mantém **sempre atualizado** com o [htmx](https://htmx.org): a página consulta o Ollama ao carregar, **a cada 10 segundos** (enquanto a aba está visível), ao voltar para a aba e ao abrir o menu. Se o próprio chat sair do ar, a bolinha fica vermelha com "Servidor do chat inacessível".
+
+**Clicar no item de status:**
+
+- com o Ollama **online**, abre um modal com os **modelos instalados**: parâmetros, quantização, família, contexto máximo, capacidades (por exemplo `completion`, `vision`, `thinking`), tamanho em disco, data de atualização e se o modelo está **na memória** agora (com o tamanho e a hora em que será descarregado). No topo há a versão do Ollama, o total de modelos, o espaço em disco ocupado e quantos estão na memória;
+- com o Ollama **offline**, o clique tenta consultar de novo. Para fechar, use o ✕, a tecla `Esc` ou clique fora da janela. O botão "Abrir em nova aba" abre a mesma página fora do chat.
 
 O **Histórico** lista todos os resultados, do mais recente para o mais antigo: número, data, arquivo, tipo, se foi resumo ou comparação e os modelos usados. **Clique em uma linha** para abrir o relatório daquele registro dentro da mesma janela, com o botão "← Voltar" para retornar à lista.
 
@@ -119,7 +126,7 @@ Para usar GPU NVIDIA, instale o NVIDIA Container Toolkit e descomente o bloco `d
 - **O primeiro uso de um modelo demora.** Ele está sendo baixado (a barra de progresso aparece no cartão). Se o download travar, rode `docker exec ollama ollama pull <modelo>`; ele retoma de onde parou.
 - **"PDF sem texto extraível".** O PDF é uma imagem escaneada. É preciso passar por OCR antes (por exemplo com `ocrmypdf`).
 - **Muito lento.** Sem GPU o modelo roda na CPU. Use um modelo menor, feche outros programas e confira a memória livre. No WSL2, a memória é limitada pelo `.wslconfig`.
-- **Página sem estilo ou resumo sem formatação.** O visual vem de bibliotecas carregadas da internet (Tailwind e renderizador de Markdown). Sem rede o conteúdo continua legível, só mais simples.
+- **Página sem estilo ou resumo sem formatação.** O visual vem de bibliotecas carregadas da internet (Tailwind, htmx e renderizador de Markdown). Sem rede o conteúdo continua legível, só mais simples, e o status do Ollama mostra "Status indisponível (htmx não carregou)".
 - **Porta 8000 ou 11434 em uso.** Troque o número da porta do lado esquerdo no `docker-compose.yml`.
 
 ## Uso pela linha de comando (opcional)

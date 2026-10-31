@@ -201,6 +201,69 @@ def installed_models():
         return None
 
 
+def ollama_json(path, body=None, timeout=5):
+    """Chamada simples (sem streaming) à API do Ollama; levanta exceção se falhar."""
+    data = json.dumps(body).encode() if body is not None else None
+    req = urllib.request.Request(OLLAMA + path, data,
+                                 {"Content-Type": "application/json"} if data else {})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.load(r)
+
+
+def models_info():
+    """Versão, modelos instalados (com detalhes) e o que está na memória agora.
+    Retorna None se o Ollama estiver offline."""
+    try:
+        version = ollama_json("/api/version")["version"]
+        tags = ollama_json("/api/tags")["models"]
+    except Exception:
+        return None
+    try:
+        loaded = {m["name"]: m for m in ollama_json("/api/ps").get("models", [])}
+    except Exception:
+        loaded = {}
+    models = []
+    for m in sorted(tags, key=lambda x: x["name"]):
+        ctx, caps = None, []
+        try:   # contexto máximo e capacidades só vêm de /api/show
+            show = ollama_json("/api/show", {"model": m["name"]})
+            caps = show.get("capabilities", [])
+            ctx = next((v for k, v in show.get("model_info", {}).items()
+                        if k.endswith(".context_length")), None)
+        except Exception:
+            pass
+        d = m.get("details", {})
+        live = loaded.get(m["name"])
+        models.append({
+            "name": m["name"], "params": d.get("parameter_size"), "quant": d.get("quantization_level"),
+            "family": d.get("family"), "size": m.get("size", 0), "modified": m.get("modified_at"),
+            "ctx": ctx, "caps": caps,
+            "loaded": bool(live), "mem": live.get("size") if live else None,
+            "expires": live.get("expires_at") if live else None,
+        })
+    return {"version": version, "models": models}
+
+
+def ollama_status():
+    """Estado do Ollama para a bolinha verde/vermelha do menu."""
+    try:
+        with urllib.request.urlopen(OLLAMA + "/api/version", timeout=5) as r:
+            version = json.load(r).get("version", "?")
+    except Exception:
+        return {"ok": False}
+    return {"ok": True, "version": version, "models": len(installed_models() or [])}
+
+
+def render_status_fragment():
+    """Trecho HTML para o htmx: conteúdo do item de status do menu."""
+    s = ollama_status()
+    if s["ok"]:
+        state, text = "on", f'Ollama online · v{html.escape(str(s["version"]))} · {s["models"]} modelos'
+    else:
+        state, text = "off", "Ollama offline"
+    return f'<span class="dot dot-{state}" aria-hidden="true"></span><span>{text}</span>'
+
+
 def ensure_model(model, emit):
     have = installed_models()
     if have is None:
@@ -249,7 +312,10 @@ e = html.escape
 DATE_SCRIPT = """<script>
   document.querySelectorAll('time[datetime]').forEach(t => {
     const d = new Date(t.dateTime);
-    if (!isNaN(d)) t.textContent = d.toLocaleString('pt-BR');
+    if (isNaN(d)) return;
+    t.textContent = t.dataset.fmt === 'time' ? d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })
+      : t.dataset.fmt === 'date' ? d.toLocaleDateString('pt-BR')
+      : d.toLocaleString('pt-BR');
   });
 </script>"""
 
@@ -387,6 +453,79 @@ def render_history(embed=False):
 </body></html>"""
 
 
+def fmt_bytes(n):
+    return f"{n / (1 << 30):.1f} GB" if n >= (1 << 30) else f"{n / (1 << 20):.0f} MB"
+
+
+def local_time(iso, fmt_name=None):
+    """<time> que o navegador converte para o fuso local (o texto é só o plano B).
+    fmt_name: None = data e hora, "time" = só hora, "date" = só data."""
+    if not iso:
+        return "—"
+    fmt = f' data-fmt="{fmt_name}"' if fmt_name else ""
+    return f'<time datetime="{e(iso)}"{fmt}>{e(iso[:16].replace("T", " "))}</time>'
+
+
+def render_models(embed=False):
+    info = models_info()
+    if info is None:
+        body = ('<section class="card p-6"><span class="badge badge-destructive">offline</span> '
+                '<span class="ml-2">O Ollama não está respondendo. Verifique '
+                '<code>docker compose ps</code>.</span></section>')
+    else:
+        ms = info["models"]
+        total = sum(m["size"] for m in ms)
+        rows = []
+        for m in ms:
+            caps = "".join(f'<span class="badge mr-1">{e(c)}</span>' for c in m["caps"]) or "—"
+            mem = (f'<span class="badge whitespace-nowrap">na memória</span>'
+                   f'<div class="text-xs text-muted-foreground mt-1 whitespace-nowrap">'
+                   f'{fmt_bytes(m["mem"] or 0)} · sai às {local_time(m["expires"], "time")}</div>'
+                   if m["loaded"] else '<span class="text-muted-foreground">—</span>')
+            ctx_txt = f"{m['ctx']:,} tokens" if m["ctx"] else "—"
+            rows.append(
+                f'<tr class="border-b border-border align-top">'
+                f'<td class="p-3 font-medium whitespace-nowrap">{e(m["name"])}</td>'
+                f'<td class="p-3 whitespace-nowrap">{e(m["params"] or "—")}</td>'
+                f'<td class="p-3 whitespace-nowrap">{e(m["quant"] or "—")}</td>'
+                f'<td class="p-3 whitespace-nowrap">{e(m["family"] or "—")}</td>'
+                f'<td class="p-3 whitespace-nowrap">{ctx_txt}</td>'
+                f'<td class="p-3 whitespace-nowrap">{fmt_bytes(m["size"])}</td>'
+                f'<td class="p-3">{caps}</td>'
+                f'<td class="p-3 whitespace-nowrap text-muted-foreground">{local_time(m["modified"], "date")}</td>'
+                f'<td class="p-3">{mem}</td></tr>')
+        in_mem = sum(1 for m in ms if m["loaded"])
+        body = f"""<section class="card"><div class="p-6 grid gap-4 sm:grid-cols-4">
+      <div><div class="stat-label">Ollama</div><div class="stat-value"><span class="dot dot-on" style="display:inline-block"></span>online · v{e(str(info["version"]))}</div></div>
+      <div><div class="stat-label">Modelos instalados</div><div class="stat-value">{len(ms)}</div></div>
+      <div><div class="stat-label">Espaço em disco</div><div class="stat-value">{fmt_bytes(total)}</div></div>
+      <div><div class="stat-label">Na memória agora</div><div class="stat-value">{in_mem}</div></div>
+    </div></section>
+  <section class="card overflow-hidden"><div class="overflow-x-auto"><table class="w-full text-sm">
+      <thead><tr class="border-b border-border text-left text-muted-foreground">
+        <th class="p-3 font-medium">Modelo</th><th class="p-3 font-medium">Parâmetros</th>
+        <th class="p-3 font-medium">Quantização</th><th class="p-3 font-medium">Família</th>
+        <th class="p-3 font-medium">Contexto máx.</th><th class="p-3 font-medium">Disco</th>
+        <th class="p-3 font-medium">Capacidades</th><th class="p-3 font-medium">Atualizado</th>
+        <th class="p-3 font-medium">Memória</th></tr></thead>
+      <tbody>{"".join(rows) or '<tr><td colspan="9" class="p-6 text-center text-muted-foreground">Nenhum modelo instalado.</td></tr>'}</tbody>
+  </table></div></section>"""
+    return f"""<!doctype html>
+<html lang="pt-BR"><head><title>Modelos instalados</title>
+{HEAD}</head>
+<body class="min-h-screen">
+<main class="mx-auto max-w-6xl px-4 py-8 space-y-6">
+  {nav("models", embed)}
+  <header>
+    <h1 class="text-2xl font-semibold tracking-tight">Modelos instalados</h1>
+    <p class="text-sm text-muted-foreground">Dados lidos do Ollama agora. Modelos ficam na memória por 10 minutos depois do último uso.</p>
+  </header>
+  {body}
+</main>
+{DATE_SCRIPT}
+</body></html>"""
+
+
 def render_help(embed=False):
     """Página de ajuda: renderiza o README.md (única fonte do texto) no navegador."""
     return f"""<!doctype html>
@@ -455,6 +594,8 @@ class Handler(BaseHTTPRequestHandler):
                               .replace("<!--HEAD-->", HEAD))
         if path == "/history":
             return self._page(200, render_history(embed))
+        if path == "/models":
+            return self._page(200, render_models(embed))
         if path == "/help":
             return self._page(200, render_help(embed))
         if path == "/help.md" and README_PATH.is_file():
@@ -465,6 +606,8 @@ class Handler(BaseHTTPRequestHandler):
             run, results = get_run(int(m.group(1)))
             if run:
                 return self._page(200, render_report(run, results, embed))
+        if path == "/fragments/ollama-status":
+            return self._send(200, render_status_fragment(), "text/html; charset=utf-8")
         if path == "/api/models":
             return self._json(200, {"models": installed_models() or []})
         self._json(404, {"message": "não encontrado"})
