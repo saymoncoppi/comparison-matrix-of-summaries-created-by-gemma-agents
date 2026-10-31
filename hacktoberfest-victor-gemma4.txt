@@ -1,0 +1,18 @@
+Para quem não assistiu a Live, acompanhem por aqui: 
+https://www.youtube.com/watch?v=Xm-MSieGhko&t=15s
+
+Esse é o material que o Victor utilizou na 
+live: https://docs.google.com/presentation/d/1A5cRz8sz5zcY5kWC7fnbGilljIiWemLN_T6C6wA9Mss/edit?usp=sharing
+https://colab.research.google.com/drive/1jlErnzn8ul-gSjOEbFcag95JaAfGq7k3?usp=sharing
+https://colab.research.google.com/drive/1GRPxLgBsq7LNrgEqykM94PJUgJW9mv4t?usp=sharing
+https://colab.research.google.com/drive/1rUkA4ag2cTwo5KYLBpHl1dXp7BXmxGIc?usp=sharing
+https://huggingface.co/google/embeddinggemma-2
+https://github.com/victorpug-exe/ADK-Hello-World
+
+Além disso, temos os guias fornecidos pela MLH para o desenvolvimento do projeto no evento:
+
+https://github.com/google-gemma/cookbook
+https://www.mlh.com/partners/gemma
+
+Essa é a descrição da categoria que será premiada de melhor projeto Gemma:
+https://www.mlh.com/events/hacktoberfest-hack-day-sao-jose-dos-campos-x-github-community-sjc/challenges/01a03b87-be22-9180-5e2d-b3beeb66666d

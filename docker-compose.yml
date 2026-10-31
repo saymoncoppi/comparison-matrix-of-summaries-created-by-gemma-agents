@@ -1,0 +1,54 @@
+services:
+  ollama:
+    image: ollama/ollama
+    container_name: ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama:/root/.ollama
+    restart: unless-stopped
+    # Para usar GPU NVIDIA (requer NVIDIA Container Toolkit), descomente:
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: all
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # Baixa o modelo uma vez, depois encerra.
+  pull-model:
+    image: ollama/ollama
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+    entrypoint: ["ollama", "pull", "gemma4:e4b"]
+    restart: "no"
+
+  # Chat para enviar o arquivo e gerar o relatório HTML: http://localhost:8000
+  #   docker compose up -d --build chat
+  chat:
+    build: ./app
+    depends_on:
+      ollama:
+        condition: service_healthy
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OUT_DIR: /outputs
+    user: "1000:1000"   # mesmo dono dos arquivos do host (./outputs)
+    ports:
+      - "127.0.0.1:8000:8000"
+    volumes:
+      - ./outputs:/outputs
+      - ./README.md:/app/README.md:ro   # texto da página /help
+    restart: unless-stopped
+
+volumes:
+  ollama:
