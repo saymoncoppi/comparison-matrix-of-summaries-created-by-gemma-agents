@@ -59,6 +59,11 @@
            font-size: 12px; font-weight: 600; background: hsl(var(--secondary));
            color: hsl(var(--secondary-foreground)); }
   .badge-destructive { background: hsl(var(--destructive)); color: hsl(var(--destructive-foreground)); }
+  /* "sucesso" não existe no shadcn/ui; segue o padrão dos badges dele (fundo suave + borda fina na mesma cor) */
+  .badge-success { background: hsl(142 76% 36% / .12); color: hsl(142 72% 26%);
+                   box-shadow: inset 0 0 0 1px hsl(142 76% 36% / .30); }
+  .dark .badge-success { background: hsl(142 70% 45% / .16); color: hsl(142 70% 62%);
+                         box-shadow: inset 0 0 0 1px hsl(142 70% 45% / .32); }
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: 8px;
          height: 40px; padding: 0 16px; border-radius: var(--radius); font-size: 14px; font-weight: 500;
          background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); cursor: pointer;
@@ -68,6 +73,10 @@
   .btn-outline { background: transparent; color: hsl(var(--foreground)); border-color: hsl(var(--input)); }
   .btn-outline:hover { background: hsl(var(--accent)); color: hsl(var(--accent-foreground)); opacity: 1; }
   .btn-sm { height: 36px; padding: 0 12px; }
+  .btn-success { background: hsl(142 72% 30%); color: #fff; }
+  .btn-success:hover { background: hsl(142 72% 25%); opacity: 1; }
+  .dark .btn-success { background: hsl(142 70% 36%); }
+  .dark .btn-success:hover { background: hsl(142 70% 31%); }
   .alert { border: 1px solid hsl(var(--border)); border-radius: var(--radius); padding: 12px 16px;
            font-size: 14px; background: hsl(var(--muted)); }
   .stat-label { font-size: 12px; color: hsl(var(--muted-foreground)); }
@@ -87,6 +96,10 @@
   .md pre { background: hsl(var(--muted)); padding: 12px; border-radius: var(--radius); overflow-x: auto; margin: .8em 0; font-size: .875em; }
   .md pre code { background: transparent; padding: 0; }
   .md li { margin: .2em 0; }
+  /* texto dos resumos: justificado, com hifenização e respiro entre parágrafos */
+  .summary { text-align: justify; hyphens: auto; -webkit-hyphens: auto; line-height: 1.65; text-wrap: pretty; }
+  .summary p { margin: .75em 0; }
+  .summary li { text-align: justify; }
   .md img { max-width: 100%; height: auto; margin: .6em 0 1.2em; border: 1px solid hsl(var(--border));
             border-radius: var(--radius); }
 </style>

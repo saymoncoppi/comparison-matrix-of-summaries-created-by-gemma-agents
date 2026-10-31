@@ -7,6 +7,11 @@ services:
     volumes:
       - ollama:/root/.ollama
     restart: unless-stopped
+    environment:
+      # Um modelo por vez na memória. Com vários carregados (cada um fica 10 min), a RAM acaba, o
+      # cache de disco encolhe e a leitura do modelo seguinte fica ~1,6x mais lenta (medido: 26 contra
+      # 42 tok/s no gemma4:e4b). Os modelos de uma comparação rodam em sequência, então não há perda.
+      OLLAMA_MAX_LOADED_MODELS: "1"
     # Para usar GPU NVIDIA (requer NVIDIA Container Toolkit), descomente:
     # deploy:
     #   resources:

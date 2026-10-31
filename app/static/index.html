@@ -14,15 +14,52 @@
            padding: 0 10px; font-size: 13px; width: 11rem; color: hsl(var(--foreground)); }
   .input:focus { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
   .drop[data-over="true"] { border-color: hsl(var(--ring)); background: hsl(var(--accent)); }
-  .stream { white-space: pre-wrap; max-height: 16rem; overflow-y: auto; }
+  [hidden] { display: none !important; }
 
-  /* barra de progresso (rodapé de cada card) */
-  .bar { height: 6px; border-radius: 9999px; background: hsl(var(--secondary)); overflow: hidden; transition: opacity .4s; }
-  .bar > div { height: 100%; width: 0; border-radius: 9999px; background: hsl(var(--primary)); transition: width .25s ease; }
-  .bar.indet > div { width: 40%; animation: slide 1.2s ease-in-out infinite; }
-  .bar.fade { opacity: 0; }
+  /* resumo recolhível (fold) dentro do card, com ícone de copiar */
+  .fold-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .fold-toggle { display: inline-flex; align-items: center; gap: 6px; padding: 2px 6px 2px 0; border: 0; border-radius: 6px;
+                 background: transparent; font: inherit; font-size: 13px; font-weight: 500; cursor: pointer;
+                 color: hsl(var(--foreground)); }
+  .fold-toggle:hover { color: hsl(var(--muted-foreground)); }
+  .fold-toggle svg { transition: transform .2s; }
+  .fold-toggle[aria-expanded="false"] svg { transform: rotate(-90deg); }
+  .fold { display: grid; grid-template-rows: 1fr; transition: grid-template-rows .25s ease; }
+  .fold.closed { grid-template-rows: 0fr; }
+  .fold > div { min-height: 0; overflow: hidden; }
+  .icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;
+              border: 1px solid transparent; border-radius: var(--radius); background: transparent; cursor: pointer;
+              color: hsl(var(--muted-foreground)); }
+  .icon-btn:hover { background: hsl(var(--accent)); color: hsl(var(--foreground)); }
+  .icon-btn.copied { color: hsl(142 72% 30%); }
+  .dark .icon-btn.copied { color: hsl(142 70% 62%); }
+  .fold-toggle:focus-visible, .icon-btn:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+
+  /* barra de progresso por etapa (rodapé de cada card): carga | leitura | geração */
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; transition: opacity .4s; }
+  .steps.fade { opacity: 0; }
+  .seg { height: 6px; border-radius: 9999px; background: hsl(var(--secondary)); overflow: hidden; }
+  .seg > div { height: 100%; width: 0; border-radius: 9999px; background: hsl(var(--primary)); transition: width .25s ease; }
+  .seg.done > div { width: 100%; }
+  .seg.indet > div { width: 40%; animation: slide 1.2s ease-in-out infinite; }
   @keyframes slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
-  @media (prefers-reduced-motion: reduce) { .bar.indet > div { animation: none; width: 100%; opacity: .5; } }
+  @media (prefers-reduced-motion: reduce) { .seg.indet > div { animation: none; width: 100%; opacity: .5; } }
+
+  /* pills com tooltip no hover, no estilo do shadcn/ui */
+  .tip-wrap { position: relative; display: inline-flex; }
+  .pill { cursor: pointer; border: 0; font-family: inherit; transition: background .15s; }
+  .pill:hover, .pill[aria-expanded="true"] { background: hsl(var(--accent)); box-shadow: inset 0 0 0 1px hsl(var(--border)); }
+  .pill:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+  .tip { position: absolute; bottom: calc(100% + 8px); left: 0; z-index: 30; width: max-content; max-width: 280px;
+         padding: 8px 12px; border-radius: calc(var(--radius) - 2px); font-size: 12px; font-weight: 400; line-height: 1.5;
+         text-align: left; background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
+         box-shadow: 0 6px 18px rgb(0 0 0 / .22); }
+  .tip[hidden] { display: none; }
+  .tip::after { content: ""; position: absolute; top: 100%; left: 14px; border: 6px solid transparent;
+                border-top-color: hsl(var(--primary)); }
+
+  .tip.below { bottom: auto; top: calc(100% + 8px); }
+  .tip.below::after { top: auto; bottom: 100%; border-top-color: transparent; border-bottom-color: hsl(var(--primary)); }
 
   /* menu de 3 pontinhos */
   .menu-item { display: flex; width: 100%; align-items: center; border-radius: calc(var(--radius) - 2px);
@@ -92,7 +129,7 @@
         <div id="file-info" class="min-w-0 truncate text-sm text-muted-foreground"></div>
         <div class="flex shrink-0 gap-2">
           <button id="pick" type="button" class="btn btn-outline btn-sm">Escolher arquivo</button>
-          <button id="send" type="submit" class="btn btn-sm" disabled>Gerar relatório</button>
+          <button id="send" type="submit" class="btn btn-sm" disabled>Executar</button>
         </div>
         <input id="file" type="file" accept=".pdf,.txt,.md,.markdown" class="hidden">
       </div>
@@ -115,6 +152,8 @@
 </dialog>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/1.9.12/htmx.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
 <script>
 const $ = s => document.querySelector(s);
 const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -245,6 +284,63 @@ function newAnalysis() {
   refreshButtons();
 }
 
+// ---- etapas, pills e tooltips ----------------------------------------------------
+const STAGES = {   // seg = qual trecho da barra (carga | leitura | geração) a etapa preenche
+  pull:     { label: 'Baixando modelo',    seg: 0 },
+  load:     { label: 'Carregando modelo',  seg: 0 },
+  read:     { label: 'Executando leitura', seg: 1 },
+  generate: { label: 'Gerando resultados', seg: 2 },
+};
+const TIPS = {
+  load: 'Carga: tempo para o Ollama trazer o modelo do disco para a memória. É alto na primeira vez que o modelo é usado e quase zero se ele já estava carregado (fica 10 minutos na memória depois do último uso).',
+  read: 'Leitura: tempo que o modelo levou para processar o texto do arquivo antes de começar a escrever. É cálculo do modelo sobre cada token do texto, então cresce com o tamanho do texto e do modelo: modelos maiores leem mais devagar.',
+  gen:  'Geração: tempo gasto escrevendo o resumo, um token (pedaço de palavra) de cada vez.',
+  tps:  'Velocidade de geração, em tokens por segundo. Quanto maior o número, mais rápido o modelo escreve.',
+  cut:  'O resumo chegou ao limite de 1024 tokens e foi cortado antes de terminar.',
+};
+let tipId = 0;
+function closeTips() {
+  document.querySelectorAll('.tip').forEach(t => { t.hidden = true; });
+  document.querySelectorAll('.pill[aria-expanded="true"]').forEach(b => b.setAttribute('aria-expanded', 'false'));
+}
+document.addEventListener('click', e => { if (!e.target.closest('.tip-wrap')) closeTips(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeTips(); });
+
+// Pill com tooltip: aparece ao passar o mouse ou ao focar com o teclado (Tab); em telas de toque, o toque abre.
+function makePill(label, tipText) {
+  const wrap = el('span', 'tip-wrap');
+  const b = el('button', 'badge pill', label); b.type = 'button'; b.setAttribute('aria-expanded', 'false');
+  const tip = el('span', 'tip', tipText); tip.id = 'tip-' + (++tipId); tip.setAttribute('role', 'tooltip'); tip.hidden = true;
+  b.setAttribute('aria-describedby', tip.id);
+  const show = () => {
+    closeTips(); tip.hidden = false; b.setAttribute('aria-expanded', 'true');
+    // sem espaço acima (card no topo da conversa)? abre para baixo
+    tip.classList.toggle('below', b.getBoundingClientRect().top - $('#chat').getBoundingClientRect().top < tip.offsetHeight + 16);
+  };
+  const hide = () => { tip.hidden = true; b.setAttribute('aria-expanded', 'false'); };
+  wrap.addEventListener('mouseenter', show); wrap.addEventListener('mouseleave', hide);
+  b.addEventListener('focus', show); b.addEventListener('blur', hide);
+  b.addEventListener('click', () => { if (tip.hidden) show(); });
+  wrap.append(b, tip);
+  return { wrap, b, tip, base: tipText };
+}
+
+// Ícones (lucide) e cópia para a área de transferência
+const svg = d => `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+const ICONS = {
+  chevron: svg('<path d="m6 9 6 6 6-6"/>'),
+  copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
+  check: svg('<path d="M20 6 9 17l-5-5"/>'),
+};
+async function copyText(text) {
+  try { await navigator.clipboard.writeText(text); return true; }
+  catch {   // contexto sem Clipboard API: plano B com um textarea temporário
+    const ta = el('textarea'); ta.value = text; ta.style.cssText = 'position:fixed;opacity:0'; document.body.appendChild(ta); ta.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch {} ta.remove(); return ok;
+  }
+}
+let foldId = 0;
+
 // ---- envio e stream de eventos --------------------------------------------------
 $('#form').addEventListener('submit', async e => {
   e.preventDefault();
@@ -254,37 +350,92 @@ $('#form').addEventListener('submit', async e => {
   const box = el('div', 'space-y-3'); $('#chat').appendChild(box);
   const status = el('div', 'card p-3 text-sm text-muted-foreground', 'Enviando arquivo…'); box.appendChild(status);
   const panels = {};
-  let expected = 150;   // tokens esperados no resumo (estimativa, só para a barra)
+  let expected = 150;   // tokens esperados no resumo (estimativa, só para a barra de geração)
   const url = '/api/summarize?models=' + encodeURIComponent(models.join(',')) + '&filename=' + encodeURIComponent(file.name);
 
-  // Card por modelo; a barra de progresso fica no rodapé até a análise terminar.
+  // Um card por modelo. Rodapé: status da etapa + barra em 3 trechos (carga | leitura | geração).
+  // Os pills (carga, leitura, geração, tok/s) entram conforme cada etapa termina. O resumo fica dentro
+  // do card, num bloco que pode ser recolhido; o ícone de copiar só aparece depois que o modelo conclui.
   function makePanel(model) {
-    const card = el('div', 'card space-y-2 p-4');
+    const card = el('div', 'card space-y-3 p-4');
     const head = el('div', 'flex items-center justify-between gap-2');
     head.appendChild(el('div', 'font-semibold', model));
     const badge = el('span', 'badge', 'na fila'); head.appendChild(badge);
-    const text = el('div', 'stream hidden text-sm'); const stats = el('div', 'flex flex-wrap gap-2');
-    const bar = el('div', 'bar'); bar.setAttribute('role', 'progressbar'); bar.setAttribute('aria-label', 'Progresso de ' + model);
-    bar.setAttribute('aria-valuemin', 0); bar.setAttribute('aria-valuemax', 100);
-    const fill = el('div'); bar.appendChild(fill);
-    card.append(head, text, stats, bar); box.appendChild(card);
-    return panels[model] = { card, badge, bar, fill, text, stats, tokens: 0, pct: 0, finished: false };
+
+    const sumHead = el('div', 'fold-head'); sumHead.hidden = true;   // aparece no 1º token
+    const toggle = el('button', 'fold-toggle'); toggle.type = 'button'; toggle.setAttribute('aria-expanded', 'true');
+    toggle.setAttribute('title', 'Ocultar resumo');
+    const chev = el('span'); chev.innerHTML = ICONS.chevron; toggle.append(chev, el('span', '', 'Resumo'));
+    const meta = el('span', 'text-xs font-normal text-muted-foreground'); toggle.appendChild(meta);
+    const copy = el('button', 'icon-btn'); copy.type = 'button'; copy.hidden = true;
+    copy.innerHTML = ICONS.copy; copy.title = 'Copiar resumo'; copy.setAttribute('aria-label', 'Copiar resumo');
+    sumHead.append(toggle, copy);
+    const text = el('div', 'md summary text-sm');
+    const fold = el('div', 'fold', null); fold.id = 'fold-' + (++foldId); fold.hidden = true;
+    const inner = el('div'); inner.appendChild(text); fold.appendChild(inner);
+    toggle.setAttribute('aria-controls', fold.id);
+
+    const pills = el('div', 'flex flex-wrap gap-2');
+    const foot = el('div', 'space-y-2');
+    const line = el('div', 'flex items-center justify-between gap-2 text-sm text-muted-foreground');
+    const label = el('span', '', 'Na fila'); const elapsed = el('span', 'tabular-nums');
+    line.append(label, elapsed);
+    const steps = el('div', 'steps'); steps.setAttribute('role', 'progressbar'); steps.setAttribute('aria-label', 'Progresso de ' + model);
+    const segs = [0, 1, 2].map(() => { const s = el('div', 'seg'), f = el('div'); s.appendChild(f); steps.appendChild(s); return { s, f }; });
+    foot.append(line, steps);
+    card.append(head, sumHead, fold, pills, foot); box.appendChild(card);
+
+    const p = panels[model] = { card, badge, text, sumHead, fold, meta, copy, pills, foot, label, elapsed, steps, segs,
+                                raw: '', tokens: 0, pct: 0, stage: null, stageStart: 0, timer: null, renderT: null,
+                                finished: false, pill: {} };
+    toggle.onclick = () => {   // recolher/expandir o resumo
+      const fechar = !fold.classList.contains('closed'); fold.classList.toggle('closed', fechar);
+      toggle.setAttribute('aria-expanded', String(!fechar)); toggle.title = fechar ? 'Mostrar resumo' : 'Ocultar resumo';
+    };
+    copy.onclick = async () => {
+      const ok = await copyText(p.raw);
+      copy.classList.toggle('copied', ok); copy.innerHTML = ok ? ICONS.check : ICONS.copy;
+      copy.title = ok ? 'Copiado!' : 'Não foi possível copiar'; copy.setAttribute('aria-label', copy.title);
+      setTimeout(() => { copy.classList.remove('copied'); copy.innerHTML = ICONS.copy; copy.title = 'Copiar resumo'; copy.setAttribute('aria-label', 'Copiar resumo'); }, 1600);
+    };
+    return p;
   }
   const panel = m => panels[m] || makePanel(m);
-  function setIndeterminate(p) { p.bar.classList.add('indet'); p.bar.removeAttribute('aria-valuenow'); }
-  function setPct(p, v) {   // nunca recua
-    p.bar.classList.remove('indet'); p.pct = Math.max(p.pct, Math.min(100, v));
-    p.fill.style.width = p.pct + '%'; p.bar.setAttribute('aria-valuenow', Math.round(p.pct));
+
+  function segSet(p, i, state, pct) {   // state: idle | indet | det | done
+    const { s, f } = p.segs[i];
+    s.classList.toggle('indet', state === 'indet'); s.classList.toggle('done', state === 'done');
+    f.style.width = state === 'det' ? pct + '%' : '';
   }
-  function finishBar(p, ok) {
-    p.finished = true; p.bar.classList.remove('indet');
-    if (ok) setPct(p, 100);
-    setTimeout(() => p.bar.classList.add('fade'), 500);
-    setTimeout(() => p.bar.remove(), 1000);
+  function tick(p) { p.elapsed.textContent = Math.floor((performance.now() - p.stageStart) / 1000) + 's'; }
+  function enter(p, stage) {   // começa uma etapa: troca o status, move a barra e zera o cronômetro
+    const s = STAGES[stage]; p.stage = stage; p.stageStart = performance.now();
+    p.label.textContent = s.label + '…'; p.badge.textContent = 'em execução';
+    for (let i = 0; i < 3; i++)
+      segSet(p, i, i < s.seg ? 'done' : i > s.seg ? 'idle' : (stage === 'generate' || stage === 'pull') ? 'det' : 'indet', 0);
+    clearInterval(p.timer); tick(p); p.timer = setInterval(() => tick(p), 250);
   }
-  const stat = (p, label, v) => p.stats.appendChild(el('span', 'badge', `${label} ${v}`.trim()));
+  function addPill(p, key, label, tipText) {
+    if (p.pill[key]) { p.pill[key].b.textContent = label; return p.pill[key]; }
+    const x = makePill(label, tipText || TIPS[key]); p.pills.appendChild(x.wrap); return p.pill[key] = x;
+  }
+  function renderSummary(p) {   // markdown do modelo; sem as bibliotecas, mostra o texto puro
+    p.renderT = null;
+    if (window.marked && window.DOMPurify) { p.text.classList.remove('whitespace-pre-wrap'); p.text.innerHTML = DOMPurify.sanitize(marked.parse(p.raw)); }
+    else { p.text.classList.add('whitespace-pre-wrap'); p.text.textContent = p.raw; }
+  }
+  function finish(p, ok) {
+    p.finished = true; clearInterval(p.timer);
+    if (p.renderT) { clearTimeout(p.renderT); renderSummary(p); }
+    if (ok) p.segs.forEach((_, i) => segSet(p, i, 'done'));
+    if (ok && p.raw) { p.copy.hidden = false; p.meta.textContent = '· ' + p.raw.trim().split(/\s+/).length + ' palavras'; }
+    p.label.textContent = ''; p.elapsed.textContent = '';
+    setTimeout(() => p.steps.classList.add('fade'), 500);
+    setTimeout(() => p.foot.remove(), 1000);
+  }
 
   function handle(ev) {
+    const p = ev.model && panel(ev.model);
     if (ev.type === 'info') {
       expected = Math.min(600, Math.max(80, Math.round(ev.est_tokens * 0.35)));
       status.textContent = `Arquivo lido: ${ev.ftype} · ${ev.chars.toLocaleString('pt-BR')} caracteres · contexto ${ev.ctx}`;
@@ -293,31 +444,41 @@ $('#form').addEventListener('submit', async e => {
     } else if (ev.type === 'queue') {
       status.textContent = 'Outro job está rodando; aguardando a vez…';
     } else if (ev.type === 'model_start') {
-      const p = panel(ev.model); p.badge.textContent = `${ev.index}/${ev.total} · carregando e lendo o texto`; setIndeterminate(p);
+      enter(p, 'load');
     } else if (ev.type === 'pull') {
-      const p = panel(ev.model);
-      if (ev.percent != null) { setPct(p, ev.percent); p.badge.textContent = `baixando ${ev.percent}%`; }
-      else { p.badge.textContent = ev.status || 'baixando'; setIndeterminate(p); }
+      if (p.stage !== 'pull') enter(p, 'pull');
+      if (ev.percent != null) { segSet(p, 0, 'det', ev.percent); p.label.textContent = `Baixando modelo · ${ev.percent}%`; }
+    } else if (ev.type === 'stage') {
+      enter(p, ev.stage);
+    } else if (ev.type === 'stage_done') {
+      const secs = ev.seconds.toFixed(1) + 's';
+      if (ev.stage === 'load') { addPill(p, 'load', 'carga ' + secs); segSet(p, 0, 'done'); }
+      if (ev.stage === 'read') { addPill(p, 'read', 'leitura ' + secs); segSet(p, 1, 'done'); }
     } else if (ev.type === 'token') {
-      const p = panel(ev.model); p.tokens++;
-      if (p.tokens === 1) { p.bar.classList.remove('indet'); p.pct = 0; p.fill.style.width = '0%'; p.text.classList.remove('hidden'); }
-      p.badge.textContent = `gerando · ${p.tokens} tokens`;
-      setPct(p, Math.min(95, 100 * p.tokens / expected));   // estimativa; só chega a 100% ao concluir
-      p.text.textContent += ev.text; p.text.scrollTop = p.text.scrollHeight;
+      p.tokens++; p.raw += ev.text; p.sumHead.hidden = false; p.fold.hidden = false;
+      p.pct = Math.max(p.pct, Math.min(95, 100 * p.tokens / expected));   // estimativa; só chega a 100% ao concluir
+      segSet(p, 2, 'det', p.pct); p.label.textContent = `Gerando resultados · ${p.tokens} tokens…`;
+      if (!p.renderT) p.renderT = setTimeout(() => renderSummary(p), 120);
     } else if (ev.type === 'model_done') {
-      const p = panel(ev.model); p.badge.textContent = 'concluído'; finishBar(p, true);
-      stat(p, 'carga', ev.load_s.toFixed(1) + 's'); stat(p, 'leitura', ev.read_s.toFixed(1) + 's');
-      stat(p, 'geração', ev.gen_s.toFixed(1) + 's'); stat(p, '', ev.tok_s.toFixed(1) + ' tok/s');
-      if (ev.truncated) stat(p, '', 'resumo cortado no limite de tokens');
+      // Troca os valores provisórios (medidos no navegador/servidor) pelos exatos informados pelo Ollama.
+      const rx = addPill(p, 'read', 'leitura ' + ev.read_s.toFixed(1) + 's');
+      if (ev.prompt_tokens && ev.read_s) rx.tip.textContent = rx.base + ` Aqui: ${ev.prompt_tokens.toLocaleString('pt-BR')} tokens lidos a ${(ev.prompt_tokens / ev.read_s).toFixed(0)} tokens por segundo.`;
+      addPill(p, 'load', 'carga ' + ev.load_s.toFixed(1) + 's');
+      addPill(p, 'gen', 'geração ' + ev.gen_s.toFixed(1) + 's');
+      addPill(p, 'tps', ev.tok_s.toFixed(1) + ' tok/s');
+      if (ev.truncated) addPill(p, 'cut', 'resumo cortado');
+      p.badge.className = 'badge badge-success'; p.badge.textContent = 'concluído';
+      finish(p, true);
     } else if (ev.type === 'model_error') {
-      const p = panel(ev.model); p.badge.textContent = 'erro'; p.badge.classList.add('badge-destructive'); finishBar(p, false);
-      p.stats.appendChild(el('div', 'text-sm text-destructive', ev.message));
+      p.badge.className = 'badge badge-destructive'; p.badge.textContent = 'erro';
+      p.pills.appendChild(el('div', 'text-sm text-destructive', ev.message));
+      finish(p, false);
     } else if (ev.type === 'done') {
       status.textContent = 'Relatório pronto.';
       const row = el('div', 'flex gap-2');
       const open = el('button', 'btn', 'Abrir relatório'); open.type = 'button';
       open.onclick = () => openModal(ev.report, 'Relatório #' + ev.run_id);
-      const again = el('button', 'btn btn-outline', 'Nova análise'); again.type = 'button'; again.onclick = newAnalysis;
+      const again = el('button', 'btn btn-success', 'Nova análise'); again.type = 'button'; again.onclick = newAnalysis;
       row.append(open, again); box.appendChild(row);
     }
     scroll();
@@ -339,8 +500,10 @@ $('#form').addEventListener('submit', async e => {
   } catch (err) {
     status.textContent = 'Falha na conexão com o servidor.'; status.classList.add('border-destructive');
   }
-  // Conexão encerrada antes de concluir: não deixa barra "rodando" para sempre.
-  Object.values(panels).filter(p => !p.finished).forEach(p => { p.badge.textContent = 'interrompido'; finishBar(p, false); });
+  // Conexão encerrada antes de concluir: não deixa cronômetro nem barra "rodando" para sempre.
+  Object.values(panels).filter(p => !p.finished).forEach(p => {
+    p.badge.className = 'badge badge-destructive'; p.badge.textContent = 'interrompido'; finish(p, false);
+  });
   busy = false; refreshButtons();
 });
 

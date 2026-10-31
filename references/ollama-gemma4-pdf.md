@@ -148,7 +148,7 @@ O `docker-compose.yml` do projeto (na raiz) vai além dessa versão mínima e te
 
 | Serviço | Função |
 |---|---|
-| `ollama` | O servidor do Ollama, com *healthcheck* (só fica "saudável" quando responde) e um bloco de GPU NVIDIA comentado, pronto para descomentar. |
+| `ollama` | O servidor do Ollama, com *healthcheck* (só fica "saudável" quando responde), um modelo por vez na memória (`OLLAMA_MAX_LOADED_MODELS=1`) e um bloco de GPU NVIDIA comentado, pronto para descomentar. |
 | `pull-model` | Baixa o `gemma4:e4b` uma vez e encerra. Se o modelo já existe, termina na hora. |
 | `chat` | O chat web, em `http://localhost:8000`. Fala com o Ollama pela rede interna do Compose. |
 
@@ -172,15 +172,17 @@ Isso sobe o Ollama, baixa o `gemma4:e4b` (cerca de 5,5 GB na primeira vez) e sob
 
 ![Tela inicial do chat](../assets/home.png)
 
-Na tela inicial, escolha os **modelos** (botões de baixo), anexe o arquivo (PDF, TXT ou MD, até 20 MB) e clique em **Gerar relatório**. Com um modelo você recebe um resumo; com dois ou mais, uma comparação. Para usar um modelo que ainda não está instalado, digite o nome no campo "outro modelo" e aperte Enter: ele é baixado sozinho.
+Na tela inicial, escolha os **modelos** (botões de baixo), anexe o arquivo (PDF, TXT ou MD, até 20 MB) e clique em **Executar**. Com um modelo você recebe um resumo; com dois ou mais, uma comparação. Para usar um modelo que ainda não está instalado, digite o nome no campo "outro modelo" e aperte Enter: ele é baixado sozinho.
 
 ![Comparação em andamento](../assets/comparisson-first-model.png)
 
-Cada modelo roda **um de cada vez** e tem um cartão com o resumo sendo escrito ao vivo e uma barra de progresso. Acima, o primeiro modelo já concluiu e o segundo está "carregando e lendo o texto".
+Cada modelo roda **um de cada vez** e tem um cartão com o resumo sendo escrito ao vivo. O rodapé do cartão mostra a **etapa atual** (*Carregando modelo*, *Executando leitura*, *Gerando resultados*), um cronômetro e uma barra dividida em três trechos, um para cada etapa. Os **pills de tempo** (carga, leitura, geração e tokens por segundo) aparecem conforme cada etapa termina, e o selo do cartão vira **concluído** (verde) no fim. Na captura acima, o primeiro modelo já concluiu e o segundo está nas etapas iniciais.
+
+> As capturas desta seção foram feitas com uma versão anterior da tela: os pills apareciam todos de uma vez no fim da análise, o resumo não era recolhível e o botão principal se chamava *Gerar relatório*.
 
 ![Comparação concluída](../assets/comparisson-second-model.png)
 
-Ao terminar, cada cartão mostra os tempos de **carga** (colocar o modelo na memória), **leitura** (processar o texto de entrada) e **geração** (escrever o resumo, com os tokens por segundo). Os botões **Abrir relatório** e **Nova análise** aparecem abaixo.
+Passe o mouse sobre um pill para ver um tooltip que explica o que ele mede. **Carga** é colocar o modelo na memória, **leitura** é o modelo processar o texto de entrada e **geração** é escrever o resumo (com a velocidade em tokens por segundo). O resumo fica dentro do cartão e pode ser **recolhido** pelo botão *Resumo*; depois de concluído, um ícone permite **copiar** o texto. Os botões **Abrir relatório** e o verde **Nova análise** aparecem abaixo.
 
 ![Relatório com a matriz de comparação](../assets/comparisson-report.png)
 
@@ -233,12 +235,17 @@ for row in sqlite3.connect('/outputs/resumos.db').execute(
 
 Sem GPU, a **carga** e a **leitura** do texto costumam pesar mais que a geração, principalmente nos modelos maiores. Nas capturas acima, o `gemma3:1b` levou menos de 20 segundos no total, e o `gemma4:e4b` passou de 100 segundos. O primeiro uso de um modelo paga a carga; depois ele fica 10 minutos na memória.
 
+**Por que a leitura é mais lenta no modelo maior, se o texto já foi extraído?** Porque "ler" não é copiar o texto: o modelo passa cada token por todas as suas camadas para montar a sua memória de atenção. É cálculo, e cresce com o tamanho do modelo. Com o mesmo texto (~575 tokens) e o modelo já carregado, o `gemma3:1b` leu a 71 tok/s e o `gemma4:e4b` a 15 tok/s. O resultado dessa leitura é próprio de cada modelo, então não é reaproveitado pelo seguinte. Só repetir exatamente o mesmo prompt no mesmo modelo, ainda carregado, torna a leitura quase instantânea (menos de meio segundo).
+
+**Memória:** manter vários modelos carregados ao mesmo tempo piora a leitura. Com os três modelos abertos (2,3 GB de RAM livre), o `gemma4:e4b` leu a 26 tok/s; com só ele (6,5 GB livres), a 42 tok/s. Por isso o `docker-compose.yml` usa `OLLAMA_MAX_LOADED_MODELS=1`: o Ollama descarrega o modelo anterior ao carregar o próximo.
+
 Medições feitas num notebook Intel i7-1185G7 (4 núcleos, 8 threads), sem GPU, com 20 GB de RAM no WSL2. Os seus números vão variar, e o mesmo teste oscilou até cerca de 15% entre rodadas:
 
 | Ajuste testado | Resultado |
 |---|---|
 | Padrão do Ollama (4 threads, uma por núcleo físico) | **O melhor.** Geração de 6 a 7 tok/s no `gemma4:e4b`. |
 | Usar as 8 threads | **Pior:** a geração caiu de ~7 para ~2 tok/s. Não aumente o número de threads. |
+| Um modelo por vez na memória (`OLLAMA_MAX_LOADED_MODELS=1`) | **Melhor:** libera RAM e cache de disco. Com os três modelos carregados, a leitura do `gemma4:e4b` foi 26 tok/s; com só ele, 42 tok/s. Já é o padrão do `docker-compose.yml`. |
 | `OLLAMA_FLASH_ATTENTION=1` | Pior: a leitura caiu de ~31 para ~25 tok/s no `gemma3:4b`. |
 | GPU integrada Intel | Inviável no WSL2 com o Ollama em container: o pacote Mesa do Ubuntu não traz o driver `dzn` e não existe `/dev/dri`. |
 
@@ -298,6 +305,7 @@ O `pull` retoma de onde parou; rode o comando de novo. Confira também o espaço
   Depois rode `wsl --shutdown` no PowerShell e reabra o WSL. Atenção: isso reinicia **todos** os containers do Docker no WSL.
 - Sem GPU o modelo roda na CPU e fica bem mais lento. Veja em qual processador ele está: `ollama ps` (mostra `100% CPU`).
 - Não force mais threads do que o padrão do Ollama; veja a tabela em [Desempenho na CPU](#desempenho-na-cpu).
+- Confira quantos modelos estão carregados com `ollama ps` e a RAM disponível com `free -h`. Vários modelos carregados ao mesmo tempo (cada um fica 10 minutos) esgotam a memória e deixam a leitura mais lenta. Para descarregar um modelo na hora: `curl localhost:11434/api/generate -d '{"model":"gemma4:e4b","keep_alive":0}'`.
 
 ### GPU não é usada no Docker
 - Confirme que o container foi criado com `--gpus=all`.

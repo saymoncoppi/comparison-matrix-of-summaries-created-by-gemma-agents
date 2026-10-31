@@ -12,6 +12,7 @@ import re
 import sqlite3
 import subprocess
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -33,6 +34,7 @@ PROMPT = ("Resuma o texto recebido, sempre em português. Responda somente com o
           "resumo, sem saudações, perguntas ou comentários finais.")
 MAX_UPLOAD = 20 * 1024 * 1024
 NUM_PREDICT = 1024            # teto de tokens gerados (também reservado no contexto)
+KEEP_ALIVE = "10m"            # quanto tempo o modelo fica na memória depois do último uso
 CTX_MIN, CTX_MAX = 2048, 16384
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,100}$")
 
@@ -64,7 +66,8 @@ CREATE TABLE IF NOT EXISTS results (
   summary   TEXT,
   error     TEXT,
   load_s    REAL, read_s REAL, gen_s REAL, tokens INTEGER, tok_s REAL,
-  truncated INTEGER NOT NULL DEFAULT 0
+  truncated INTEGER NOT NULL DEFAULT 0,
+  prompt_tokens INTEGER                    -- tokens lidos na etapa de leitura
 );
 CREATE INDEX IF NOT EXISTS idx_results_run ON results(run_id);
 """
@@ -81,6 +84,10 @@ def init_db():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     with closing(db()) as c, c:
         c.executescript(SCHEMA)
+        # Bancos criados antes da coluna prompt_tokens ganham a coluna sem perder dados.
+        cols = {row["name"] for row in c.execute("PRAGMA table_info(results)")}
+        if "prompt_tokens" not in cols:
+            c.execute("ALTER TABLE results ADD COLUMN prompt_tokens INTEGER")
 
 
 def save_run(info, results):
@@ -95,10 +102,10 @@ def save_run(info, results):
         for r in results:
             c.execute(
                 "INSERT INTO results (run_id, model, ok, summary, error, load_s, read_s, gen_s,"
-                " tokens, tok_s, truncated) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " tokens, tok_s, truncated, prompt_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (run_id, r["model"], int(r["ok"]), r.get("summary"), r.get("error"),
                  r.get("load_s"), r.get("read_s"), r.get("gen_s"), r.get("tokens"),
-                 r.get("tok_s"), int(r.get("truncated", False))))
+                 r.get("tok_s"), int(r.get("truncated", False)), r.get("prompt_tokens")))
     return run_id
 
 
@@ -253,14 +260,14 @@ def ollama_status():
             version = json.load(r).get("version", "?")
     except Exception:
         return {"ok": False}
-    return {"ok": True, "version": version, "models": len(installed_models() or [])}
+    return {"ok": True, "version": version}
 
 
 def render_status_fragment():
     """Trecho HTML para o htmx: conteúdo do item de status do menu."""
     s = ollama_status()
     if s["ok"]:
-        state, text = "on", f'Ollama online · v{html.escape(str(s["version"]))} · {s["models"]} modelos'
+        state, text = "on", f'Ollama online · v{html.escape(str(s["version"]))}'
     else:
         state, text = "off", "Ollama offline"
     return f'<span class="dot dot-{state}" aria-hidden="true"></span><span>{text}</span>'
@@ -280,13 +287,34 @@ def ensure_model(model, emit):
 
 
 def run_model(model, text, ctx, emit):
+    """Roda um modelo em três etapas, avisando o navegador a cada mudança:
+    carga (modelo para a memória), leitura (processar o texto) e geração (escrever o resumo)."""
     ensure_model(model, emit)
+    # As opções precisam ser idênticas nas duas chamadas; se mudarem (ex.: num_ctx), o Ollama
+    # recarrega o modelo e a "carga" reapareceria dentro da leitura.
+    opts = {"temperature": 0, "num_ctx": ctx, "num_predict": NUM_PREDICT}
+
+    # Etapa 1, carga: uma chamada sem prompt só coloca o modelo na memória.
+    emit({"type": "stage", "model": model, "stage": "load"})
+    t0 = time.monotonic()
+    for _ in ollama_stream("/api/generate", {"model": model, "keep_alive": KEEP_ALIVE, "options": opts}):
+        pass
+    load_s = time.monotonic() - t0
+    emit({"type": "stage_done", "model": model, "stage": "load", "seconds": load_s})
+
+    # Etapa 2, leitura: vai até o primeiro token. Etapa 3, geração: do primeiro token ao fim.
     body = {"model": model, "prompt": f"{PROMPT}\n\n---\n{text}\n---", "stream": True,
-            "think": False, "keep_alive": "10m",
-            "options": {"temperature": 0, "num_ctx": ctx, "num_predict": NUM_PREDICT}}
-    parts, final = [], {}
+            "think": False, "keep_alive": KEEP_ALIVE, "options": opts}
+    emit({"type": "stage", "model": model, "stage": "read"})
+    t0 = time.monotonic()
+    parts, final, first = [], {}, True
     for ev in ollama_stream("/api/generate", body):
         if ev.get("response"):
+            if first:
+                first = False
+                emit({"type": "stage_done", "model": model, "stage": "read",
+                      "seconds": time.monotonic() - t0})
+                emit({"type": "stage", "model": model, "stage": "generate"})
             parts.append(ev["response"])
             emit({"type": "token", "model": model, "text": ev["response"]})
         if ev.get("done"):
@@ -297,8 +325,10 @@ def run_model(model, text, ctx, emit):
     gen_s = final.get("eval_duration", 0) / 1e9
     return {
         "model": model, "ok": True, "summary": summary,
-        "load_s": final.get("load_duration", 0) / 1e9,
+        # Se, por algum motivo, o Ollama ainda recarregou na 2ª chamada, soma essa carga também.
+        "load_s": load_s + final.get("load_duration", 0) / 1e9,
         "read_s": final.get("prompt_eval_duration", 0) / 1e9,
+        "prompt_tokens": final.get("prompt_eval_count"),
         "gen_s": gen_s, "tokens": final.get("eval_count", 0),
         "tok_s": (final.get("eval_count", 0) / gen_s) if gen_s else 0,
         "truncated": final.get("done_reason") == "length",
@@ -342,6 +372,14 @@ def _fmt(x):
     return f"{(x or 0):.1f}s"
 
 
+def read_note(r):
+    """Tokens lidos e velocidade de leitura (só existe em registros novos)."""
+    n, s = r["prompt_tokens"], r["read_s"]
+    if not n or not s:
+        return ""
+    return f'<div class="text-xs">{n:,} tokens · {n / s:.0f} tok/s</div>'
+
+
 def render_report(run, results, embed=False):
     rows = []
     for r in results:
@@ -353,10 +391,10 @@ def render_report(run, results, embed=False):
                 f'<td class="p-3 font-medium whitespace-nowrap">{e(r["model"])}</td>'
                 f'<td class="p-3"><span class="badge">{e(run["ftype"])}</span></td>'
                 f'<td class="p-3 whitespace-nowrap text-muted-foreground">{_fmt(r["load_s"])}</td>'
-                f'<td class="p-3 whitespace-nowrap text-muted-foreground">{_fmt(r["read_s"])}</td>'
+                f'<td class="p-3 whitespace-nowrap text-muted-foreground">{_fmt(r["read_s"])}{read_note(r)}</td>'
                 f'<td class="p-3 whitespace-nowrap">{_fmt(r["gen_s"])}'
                 f'<div class="text-xs text-muted-foreground">{(r["tok_s"] or 0):.1f} tok/s</div></td>'
-                f'<td class="p-3">{note}<div class="md whitespace-pre-wrap" data-md="{e(r["summary"])}">{e(r["summary"])}</div></td>'
+                f'<td class="p-3">{note}<div class="md summary whitespace-pre-wrap" data-md="{e(r["summary"])}">{e(r["summary"])}</div></td>'
                 f'</tr>')
         else:
             rows.append(

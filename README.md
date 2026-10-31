@@ -31,19 +31,25 @@ Para parar: `docker compose down`. Os modelos e o banco continuam guardados.
 
 1. **Escolha os modelos.** Os botões no rodapé listam os modelos já instalados. Clique para marcar ou desmarcar. Com **um** modelo você recebe um resumo; com **dois ou mais**, uma comparação. Para usar um modelo que ainda não está na lista, digite o nome (por exemplo `gemma3:12b`) no campo "outro modelo" e aperte Enter. Ele é baixado automaticamente na primeira vez.
 2. **Anexe o arquivo.** Clique em "Escolher arquivo" ou arraste o arquivo para a área tracejada. Formatos aceitos: **PDF, TXT e MD**, até 20 MB.
-3. **Clique em "Gerar relatório".** O arquivo aparece como mensagem sua, e cada modelo ganha um cartão que mostra o resumo sendo escrito ao vivo. Os modelos rodam **um de cada vez**; os que ainda não começaram aparecem como "na fila".
-4. **Acompanhe a barra de progresso**, no rodapé de cada cartão, até a análise terminar:
-   - ao baixar um modelo novo, a barra mostra o percentual real do download;
-   - ao carregar o modelo e ler o texto, ela fica em movimento contínuo (não há como saber quanto falta);
-   - durante a geração, ela avança conforme os tokens são escritos. Esse avanço é uma **estimativa**, porque o tamanho final do resumo não é conhecido, e por isso ela não passa de 95% antes de a análise concluir. Ao terminar, a barra completa e some.
+3. **Clique em "Executar".** O arquivo aparece como mensagem sua, e cada modelo ganha um cartão que mostra o resumo sendo escrito ao vivo, dentro do próprio cartão. Os modelos rodam **um de cada vez**; os que ainda não começaram aparecem como "na fila".
+4. **Acompanhe as etapas** de cada modelo. Cada análise passa por três etapas, e o rodapé do cartão mostra a etapa atual, um cronômetro e uma barra dividida em três trechos (carga, leitura e geração):
+   - **Carregando modelo:** o Ollama coloca o modelo na memória (se o modelo ainda não existe, antes disso aparece "Baixando modelo" com o percentual real do download);
+   - **Executando leitura:** o modelo processa o texto do arquivo;
+   - **Gerando resultados:** o resumo é escrito ao vivo, já com a formatação em Markdown.
+
+   Os trechos da barra enchem conforme as etapas terminam. Em carga e leitura ela fica em movimento contínuo, porque não há como saber quanto falta. Na geração ela avança conforme os tokens são escritos, mas isso é uma **estimativa** (o tamanho final do resumo não é conhecido), e por isso ela não passa de 95% antes de a análise concluir. Ao terminar, a barra completa e some, e o selo do cartão vira **concluído** (verde).
+
+   **Os pills de tempo** (carga, leitura, geração e tokens por segundo) aparecem um a um, **depois que cada etapa termina**. **Passe o mouse** sobre um pill (ou foque nele com `Tab`) para ver um tooltip explicando o que ele mede; em telas de toque, toque no pill. O tooltip fecha ao tirar o mouse, tocar fora ou apertar `Esc`.
+
+   **O resumo é recolhível.** Dentro do cartão, o botão **Resumo** (com a seta) recolhe e expande o texto, o que ajuda quando ele é longo. Depois que o modelo conclui, aparece ao lado o ícone de **copiar**, que leva o texto do resumo para a área de transferência (o ícone vira um ✓ por instantes para confirmar).
 5. **Abra o relatório.** Ao terminar surge o botão "Abrir relatório", que mostra o relatório numa janela (modal) sobre o chat.
-6. **Comece outra.** O botão **Nova análise**, ao lado de "Abrir relatório", limpa a conversa e o arquivo escolhido e mantém os modelos marcados.
+6. **Comece outra.** O botão verde **Nova análise**, ao lado de "Abrir relatório", limpa a conversa e o arquivo escolhido e mantém os modelos marcados.
 
 O chat avisa quando o arquivo não pode ser usado: tipo errado, PDF escaneado (sem texto), arquivo vazio, binário disfarçado de texto ou maior que o limite.
 
 ## Menu, histórico e ajuda
 
-O botão de **três pontinhos** (⋮), no topo do chat, abre um menu com **Histórico**, **Ajuda** e o **status do Ollama**. Histórico e Ajuda abrem numa janela (modal) sobre o chat. O status mostra uma bolinha **verde** (online, com a versão e o número de modelos instalados) ou **vermelha** (offline). 
+O botão de **três pontinhos** (⋮), no topo do chat, abre um menu com **Histórico**, **Ajuda** e o **status do Ollama**. Histórico e Ajuda abrem numa janela (modal) sobre o chat. O status mostra uma bolinha **verde** (online, com a versão do Ollama) ou **vermelha** (offline).
 
 O status se mantém **sempre atualizado** com o [htmx](https://htmx.org): a página consulta o Ollama ao carregar, **a cada 10 segundos** (enquanto a aba está visível), ao voltar para a aba e ao abrir o menu. Se o próprio chat sair do ar, a bolinha fica vermelha com "Servidor do chat inacessível".
 
@@ -55,6 +61,8 @@ O status se mantém **sempre atualizado** com o [htmx](https://htmx.org): a pág
 O **Histórico** lista todos os resultados, do mais recente para o mais antigo: número, data, arquivo, tipo, se foi resumo ou comparação e os modelos usados. **Clique em uma linha** para abrir o relatório daquele registro dentro da mesma janela, com o botão "← Voltar" para retornar à lista.
 
 ## Telas
+
+> As capturas de **análise em andamento** e do **menu** são de uma versão anterior da tela: nelas a barra de progresso era única, os pills de tempo apareciam todos no fim, o resumo não era recolhível, o botão principal se chamava "Gerar relatório" e o status do Ollama mostrava também a quantidade de modelos. Hoje a barra tem três trechos, os pills aparecem a cada etapa e o status mostra só a versão.
 
 **Tela inicial:** escolha os modelos, anexe o arquivo e gere o relatório.
 
@@ -97,11 +105,13 @@ Cada relatório mostra o arquivo (tipo, tamanho, caracteres extraídos e context
 | Modelo | Nome do modelo. |
 | Tipo | Tipo do arquivo de entrada: pdf, txt ou md. |
 | Carga | Tempo para colocar o modelo na memória. É alto na primeira vez e quase zero depois, enquanto o modelo continua carregado (10 minutos). |
-| Leitura | Tempo para o modelo processar o texto de entrada. |
+| Leitura | Tempo para o modelo processar o texto de entrada, com os tokens lidos e a velocidade de leitura (tokens por segundo). |
 | Geração | Tempo para escrever o resumo, com a velocidade em tokens por segundo. |
-| Resumo | O texto completo gerado pelo modelo. |
+| Resumo | O texto completo gerado pelo modelo, formatado e justificado. |
 
 Separar carga, leitura e geração evita comparar modelos pelo tempo errado: um modelo grande parece lento só porque foi o primeiro a ser carregado.
+
+**Por que a leitura demora mais nos modelos maiores?** O texto já está pronto desde a extração, mas "ler" não é copiar: o modelo precisa passar cada token do texto por todas as suas camadas para montar sua memória de atenção. É cálculo, e cresce com o tamanho do modelo. Com o mesmo texto de ~575 tokens e o modelo já carregado, o `gemma3:1b` leu a 71 tok/s e o `gemma4:e4b` a 15 tok/s (4,8x mais lento). Essa memória também é própria de cada modelo, então não dá para reaproveitá-la entre eles. A exceção é repetir **exatamente** o mesmo prompt no mesmo modelo, que ainda está carregado: aí a leitura cai para menos de meio segundo.
 
 ## Modelos sugeridos
 
@@ -117,6 +127,7 @@ Os tempos dependem da sua máquina. Em um notebook sem GPU, um PDF de uma págin
 ## Como funciona e limites
 
 - **Um job por vez.** Se você enviar outro enquanto um roda, ele espera na fila. Rodar modelos em paralelo na CPU não ganha tempo e ainda falseia as medições.
+- **Um modelo por vez na memória.** O serviço `ollama` usa `OLLAMA_MAX_LOADED_MODELS=1`: ao carregar o modelo seguinte, o Ollama descarrega o anterior. Com vários modelos carregados ao mesmo tempo (cada um fica 10 minutos), a RAM acaba, o cache de disco encolhe e a leitura fica mais lenta; no teste, o `gemma4:e4b` leu a 26 tok/s com três modelos carregados e a 42 tok/s com só ele. O custo é que repetir uma comparação recarrega o primeiro modelo.
 - **Resultado reproduzível.** Os modelos rodam com `temperature 0` e o modo de raciocínio desligado (`think: false`).
 - **Contexto ajustado ao texto.** O chat calcula o tamanho de contexto de que o arquivo precisa. Se o texto for grande demais (acima de 16384 tokens), o relatório traz um **aviso** de que o modelo viu só parte dele.
 - **Resumo cortado.** O resumo tem teto de 1024 tokens. Se o modelo chegar ao limite, a linha aparece marcada como "cortado".
@@ -151,6 +162,8 @@ Variáveis do serviço `chat` (no `docker-compose.yml`):
 | `PORT` | `8000` | Porta dentro do container. |
 
 A porta no seu computador é a primeira de `127.0.0.1:8000:8000`. Mude-a se a 8000 estiver ocupada. O chat só aceita conexões da própria máquina.
+
+Variável do serviço `ollama`: `OLLAMA_MAX_LOADED_MODELS` (aqui, `1`) define quantos modelos ficam na memória ao mesmo tempo. Se você tem bastante RAM sobrando e quer manter vários modelos prontos, aumente o valor; veja "Como funciona e limites" para o custo disso.
 
 Para usar GPU NVIDIA, instale o NVIDIA Container Toolkit e descomente o bloco `deploy` do serviço `ollama`.
 
