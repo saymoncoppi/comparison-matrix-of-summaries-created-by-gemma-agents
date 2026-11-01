@@ -35,6 +35,9 @@ ASSET_RE = re.compile(r"^[A-Za-z0-9._-]+\.png$")
 DEFAULT_PROMPT = ("Resuma o texto recebido, sempre em português. Responda somente com o "
                   "resumo, sem saudações, perguntas ou comentários finais.")
 MAX_PROMPT = 4000             # caracteres
+# Quantos modelos podem ser marcados por execução. Vem do docker-compose.yml (MAX_MODELS), o mesmo valor de
+# OLLAMA_MAX_LOADED_MODELS: é quantos modelos o Ollama mantém na memória.
+MAX_MODELS = max(1, int(os.environ.get("MAX_MODELS") or 2))
 MAX_UPLOAD = 20 * 1024 * 1024
 NUM_PREDICT = 1024            # teto de tokens gerados (também reservado no contexto)
 KEEP_ALIVE = "10m"            # quanto tempo o modelo fica na memória depois do último uso
@@ -205,12 +208,26 @@ def ollama_stream(path, body, timeout=900):
                 yield obj
 
 
-def installed_models():
+def installed_sizes():
+    """{modelo: tamanho em disco} dos modelos instalados; None se o Ollama não responder."""
     try:
         with urllib.request.urlopen(OLLAMA + "/api/tags", timeout=10) as r:
-            return sorted(m["name"] for m in json.load(r)["models"])
+            return {m["name"]: m.get("size", 0) for m in json.load(r)["models"]}
     except Exception:
         return None
+
+
+def installed_models():
+    """Nomes dos modelos instalados, do mais leve ao mais pesado."""
+    sizes = installed_sizes()
+    return None if sizes is None else sorted(sizes, key=lambda n: (sizes[n], n))
+
+
+def order_models(models):
+    """Ordem de execução: sempre do mais leve ao mais pesado (tamanho em disco). Um modelo que ainda
+    não está instalado (será baixado) tem peso desconhecido e vai para o fim."""
+    sizes = installed_sizes() or {}
+    return sorted(models, key=lambda m: (sizes.get(m, sizes.get(m + ":latest", float("inf"))), m))
 
 
 def ollama_json(path, body=None, timeout=5):
@@ -235,7 +252,7 @@ def models_info():
     except Exception:
         loaded = {}
     models = []
-    for m in sorted(tags, key=lambda x: x["name"]):
+    for m in sorted(tags, key=lambda x: (x.get("size", 0), x["name"])):
         ctx, caps = None, []
         try:   # contexto máximo e capacidades só vêm de /api/show
             show = ollama_json("/api/show", {"model": m["name"]})
@@ -657,9 +674,10 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/fragments/ollama-status":
             return self._send(200, render_status_fragment(), "text/html; charset=utf-8")
         if path == "/api/models":
-            return self._json(200, {"models": installed_models() or []})
-        if path == "/api/prompt":   # texto padrão, usado como placeholder do menu "Prompt"
-            return self._json(200, {"default": DEFAULT_PROMPT, "max": MAX_PROMPT})
+            sizes = installed_sizes() or {}
+            return self._json(200, {"models": sorted(sizes, key=lambda n: (sizes[n], n)), "sizes": sizes})
+        if path == "/api/config":   # valores que a tela de Configurações mostra (prompt padrão, limites)
+            return self._json(200, {"default_prompt": DEFAULT_PROMPT, "max_prompt": MAX_PROMPT, "max_models": MAX_MODELS})
         self._json(404, {"message": "não encontrado"})
 
     def do_POST(self):
@@ -676,6 +694,7 @@ class Handler(BaseHTTPRequestHandler):
             ftype, type_warn = detect_type(data, filename)
             text = extract_text(data, ftype)
             ctx, ctx_warn = plan_context(text, prompt)
+            models = order_models(models)   # sempre do mais leve ao mais pesado, qualquer que seja a ordem pedida
         except UserError as err:
             return self._json(400, {"message": str(err)})
         info = {"filename": filename, "ftype": ftype, "size_bytes": len(data),
@@ -687,8 +706,12 @@ class Handler(BaseHTTPRequestHandler):
         models = [m.strip() for m in (q.get("models", [""])[0]).split(",") if m.strip()]
         if not models:
             raise UserError("Selecione ao menos um modelo.")
-        if len(models) > 6 or any(not MODEL_RE.match(m) for m in models):
+        if any(not MODEL_RE.match(m) for m in models):
             raise UserError("Lista de modelos inválida.")
+        models = list(dict.fromkeys(models))
+        if len(models) > MAX_MODELS:
+            raise UserError(f"Selecione no máximo {MAX_MODELS} {'modelo' if MAX_MODELS == 1 else 'modelos'} por execução "
+                            "(limite definido no docker-compose.yml).")
         filename = os.path.basename(q.get("filename", ["arquivo"])[0])[:200] or "arquivo"
         try:
             length = int(self.headers.get("Content-Length", ""))
@@ -702,7 +725,7 @@ class Handler(BaseHTTPRequestHandler):
         prompt = (q.get("prompt", [""])[0]).strip()
         if len(prompt) > MAX_PROMPT:
             raise UserError(f"O prompt tem mais de {MAX_PROMPT} caracteres.")
-        return list(dict.fromkeys(models)), filename, prompt or DEFAULT_PROMPT, self.rfile.read(length)
+        return models, filename, prompt or DEFAULT_PROMPT, self.rfile.read(length)
 
     def _stream_job(self, models, text, ctx, info, prompt):
         self.send_response(200)
@@ -715,7 +738,7 @@ class Handler(BaseHTTPRequestHandler):
             self.wfile.flush()
 
         try:
-            emit({"type": "info", **info, "est_tokens": len(text) // 3})
+            emit({"type": "info", **info, "models": models, "est_tokens": len(text) // 3})
             if not job_lock.acquire(blocking=False):
                 emit({"type": "queue"})
                 job_lock.acquire()

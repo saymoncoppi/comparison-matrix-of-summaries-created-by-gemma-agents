@@ -8,11 +8,15 @@
           font-size: 13px; font-weight: 500; border: 1px solid hsl(var(--input)); cursor: pointer;
           background: transparent; color: hsl(var(--foreground)); transition: background .15s; }
   .chip:hover { background: hsl(var(--accent)); }
+  .chip[aria-disabled="true"] { opacity: .45; cursor: not-allowed; }   /* limite de modelos atingido */
+  .chip[aria-disabled="true"]:hover { background: transparent; }
   .chip[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
           border-color: hsl(var(--primary)); }
   .field { width: 100%; resize: vertical; min-height: 9rem; padding: 10px 12px; border-radius: var(--radius);
            border: 1px solid hsl(var(--input)); background: transparent; color: hsl(var(--foreground));
            font: inherit; font-size: 14px; line-height: 1.55; }
+  input.field { min-height: 0; height: 38px; resize: none; width: 6rem; }
+  .field:disabled { background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); cursor: not-allowed; opacity: 1; }
   select.field { min-height: 0; height: 38px; padding: 0 10px; resize: none; width: min(100%, 18rem); background: hsl(var(--background)); }
   .field::placeholder { color: hsl(var(--muted-foreground)); opacity: .85; }
   .field:focus { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
@@ -46,6 +50,11 @@
   .seg > div { height: 100%; width: 0; border-radius: 9999px; background: hsl(var(--primary)); transition: width .25s ease; }
   .seg.done > div { width: 100%; }
   .seg.indet > div { width: 40%; animation: slide 1.2s ease-in-out infinite; }
+  /* ícone de carregamento (círculo girando) no centro do card, nas apresentações que seguram o texto */
+  .wait { display: flex; justify-content: center; padding: 14px 0; color: hsl(var(--muted-foreground)); }
+  .spin { animation: spin .9s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation-duration: 2.8s; } }
   @keyframes slide { 0% { margin-left: -40%; } 100% { margin-left: 100%; } }
   @media (prefers-reduced-motion: reduce) { .seg.indet > div { animation: none; width: 100%; opacity: .5; } }
 
@@ -124,7 +133,10 @@
   <footer class="pb-4 pt-2">
     <form id="form" class="card space-y-3 p-4">
       <div>
-        <div class="mb-2 text-xs font-medium text-muted-foreground">Modelos</div>
+        <div class="mb-2 flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <div class="text-xs font-medium text-muted-foreground">Modelos <span id="chips-count"></span></div>
+          <div id="chips-note" class="text-xs text-muted-foreground" aria-live="polite"></div>
+        </div>
         <div id="chips" class="flex flex-wrap gap-2"></div>
       </div>
       <div id="drop" class="drop flex items-center justify-between gap-3 rounded-lg border border-dashed border-input p-3">
@@ -186,7 +198,18 @@
       <p id="present-help" class="text-xs text-muted-foreground" aria-live="polite"></p>
     </section>
 
-    <p class="text-xs text-muted-foreground">Nada aqui é salvo: ao recarregar a página, as configurações voltam ao padrão.</p>
+    <section class="space-y-3" aria-labelledby="max-heading">
+      <h3 id="max-heading" class="text-sm font-semibold">Máximo de modelos por execução</h3>
+      <p class="text-sm text-muted-foreground">
+        Quantos modelos podem ficar marcados ao mesmo tempo. O valor vem do <code>docker-compose.yml</code>
+        (<code>OLLAMA_MAX_LOADED_MODELS</code>, o número de modelos que o Ollama mantém na memória) e <strong>não pode ser alterado aqui</strong>.
+        Os modelos marcados rodam sempre do <strong>mais leve para o mais pesado</strong> (pelo tamanho em disco).
+      </p>
+      <label for="max-models" class="sr-only">Máximo de modelos por execução</label>
+      <input id="max-models" class="field" value="…" readonly disabled aria-readonly="true">
+    </section>
+
+    <p class="text-xs text-muted-foreground">O prompt e a apresentação não são salvos: ao recarregar a página, voltam ao padrão.</p>
   </div>
 </dialog>
 
@@ -200,6 +223,9 @@ const OK_EXT = ['pdf', 'txt', 'md', 'markdown'];
 const DROP_HINT = 'Arraste um arquivo (pdf, txt, md)';
 let file = null, busy = false;
 const selected = new Set();
+let maxModels = 2;            // vem do servidor (compose); 2 só até a configuração chegar
+const sizes = {};             // tamanho em disco de cada modelo instalado: define a ordem de execução
+const byWeight = list => [...list].sort((a, b) => (sizes[a] ?? Infinity) - (sizes[b] ?? Infinity) || a.localeCompare(b));   // do mais leve ao mais pesado
 
 function scroll() { const c = $('#chat'); c.scrollTop = c.scrollHeight; }
 function fmtSize(b) { return b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024).toFixed(1) + ' KB'; }
@@ -295,34 +321,61 @@ present.addEventListener('change', () => { presentHelp(); refreshPresentation();
 $('#prompt-clear').onclick = () => { promptEl.value = ''; promptStatus(); promptEl.focus(); };
 $('#settings-close').onclick = () => settingsModal.close();
 settingsModal.addEventListener('click', e => { if (e.target === settingsModal) settingsModal.close(); });
-fetch('/api/prompt').then(r => r.json()).then(d => { promptEl.placeholder = d.default; promptEl.maxLength = d.max; }).catch(() => {});
+fetch('/api/config').then(r => r.json()).then(d => {
+  promptEl.placeholder = d.default_prompt; promptEl.maxLength = d.max_prompt;
+  maxModels = d.max_models; $('#max-models').value = d.max_models; limitChips();
+}).catch(() => {});
 
 // ---- modelos ------------------------------------------------------------------
+const NOTE_PADRAO = 'Rodam do mais leve ao mais pesado.';
+let noteTimer = null;
+function chipOf(name) { return [...$('#chips').children].find(c => c.dataset && c.dataset.model === name); }
+function limitChips() {   // contador e bloqueio visual dos pills que passariam do limite
+  $('#chips-count').textContent = `· ${selected.size} de ${maxModels}`;
+  const cheio = selected.size >= maxModels;
+  [...$('#chips').children].forEach(c => {
+    if (!c.dataset || !c.dataset.model) return;
+    const bloqueado = cheio && !selected.has(c.dataset.model);
+    bloqueado ? c.setAttribute('aria-disabled', 'true') : c.removeAttribute('aria-disabled');
+    c.title = bloqueado ? `Limite de ${maxModels} ${maxModels === 1 ? 'modelo' : 'modelos'}: desmarque um para escolher este` : '';
+  });
+}
+function note(msg, aviso) {
+  const n = $('#chips-note'); clearTimeout(noteTimer);
+  n.textContent = msg; n.classList.toggle('text-destructive', !!aviso); n.classList.toggle('font-medium', !!aviso);
+  if (aviso) noteTimer = setTimeout(() => note(NOTE_PADRAO, false), 4000);
+}
 function addChip(name, on) {
-  if ([...$('#chips').children].some(c => c.dataset.model === name)) { if (on) toggle(name, true); return; }
+  if (chipOf(name)) { if (on) toggle(name, true); return; }
   const b = el('button', 'chip', name); b.type = 'button'; b.dataset.model = name;
   b.setAttribute('aria-pressed', 'false'); b.onclick = () => toggle(name);
   $('#chips').appendChild(b); if (on) toggle(name, true);
 }
 function toggle(name, force) {
-  const b = [...$('#chips').children].find(c => c.dataset.model === name);
+  const b = chipOf(name);
   const on = force ?? !selected.has(name);
+  if (on && !selected.has(name) && selected.size >= maxModels) {   // passaria do máximo definido no compose
+    note(`Máximo de ${maxModels} ${maxModels === 1 ? 'modelo' : 'modelos'} por execução. Desmarque um para escolher outro.`, true); return;
+  }
   on ? selected.add(name) : selected.delete(name);
-  b.setAttribute('aria-pressed', on); refreshButtons();
+  b.setAttribute('aria-pressed', on); limitChips(); refreshButtons();
 }
 function noModels() {   // sem campo para digitar: explica como instalar
   $('#chips').replaceChildren(el('span', 'text-sm text-muted-foreground',
     'Nenhum modelo instalado (ou o Ollama está offline). Para baixar um: docker exec ollama ollama pull gemma3:4b'));
 }
 async function loadModels() {
+  note(NOTE_PADRAO, false); limitChips();
   try {
-    const { models } = await (await fetch('/api/models')).json();
-    models.forEach(m => addChip(m, false));
-    if (!models.length) noModels();
-    const pref = models.find(m => m === 'gemma3:4b') || models[0];
+    const d = await (await fetch('/api/models')).json();
+    Object.assign(sizes, d.sizes || {});
+    d.models.forEach(m => addChip(m, false));   // o servidor já devolve do mais leve ao mais pesado
+    if (!d.models.length) noModels();
+    const pref = d.models.find(m => m === 'gemma3:4b') || d.models[0];
     if (pref) toggle(pref, true);
   } catch { noModels(); }
 }
+
 // ---- arquivo ------------------------------------------------------------------
 function setFile(f) {
   if (!f) return;
@@ -348,7 +401,7 @@ function userMsg() {
   const wrap = el('div', 'flex justify-end');
   const b = el('div', 'max-w-[85%] rounded-lg bg-primary p-3 text-sm text-primary-foreground');
   b.appendChild(el('div', 'font-medium', file.name));
-  b.appendChild(el('div', 'text-xs opacity-80', `${fmtSize(file.size)} · ${[...selected].join(', ')}` + (promptEl.value.trim() ? ' · prompt personalizado' : '')));
+  b.appendChild(el('div', 'text-xs opacity-80', `${fmtSize(file.size)} · ${byWeight(selected).join(', ')}` + (promptEl.value.trim() ? ' · prompt personalizado' : '')));
   wrap.appendChild(b); $('#chat').appendChild(wrap); scroll();
 }
 
@@ -410,6 +463,7 @@ const ICONS = {
   chevron: svg('<path d="m6 9 6 6 6-6"/>'),
   copy: svg('<rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/>'),
   check: svg('<path d="M20 6 9 17l-5-5"/>'),
+  spinner: '<svg class="spin" width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>',
 };
 async function copyText(text) {
   try { await navigator.clipboard.writeText(text); return true; }
@@ -424,7 +478,7 @@ let foldId = 0;
 $('#form').addEventListener('submit', async e => {
   e.preventDefault();
   if (busy || !file || !selected.size) return;
-  const models = [...selected];
+  let models = byWeight(selected);   // mais leve primeiro; o servidor confirma a ordem no evento "info"
   busy = true; refreshButtons(); userMsg();
   const box = el('div', 'space-y-3'); $('#chat').appendChild(box);
   const status = el('div', 'card p-3 text-sm text-muted-foreground', 'Enviando arquivo…'); box.appendChild(status);
@@ -455,6 +509,8 @@ $('#form').addEventListener('submit', async e => {
     const inner = el('div'); inner.appendChild(text); fold.appendChild(inner);
     toggle.setAttribute('aria-controls', fold.id);
 
+    const wait = el('div', 'wait'); wait.hidden = true; wait.setAttribute('role', 'status');
+    wait.innerHTML = ICONS.spinner + '<span class="sr-only">Gerando o resultado…</span>';
     const pills = el('div', 'flex flex-wrap gap-2');
     const foot = el('div', 'space-y-2');
     const line = el('div', 'flex items-center justify-between gap-2 text-sm text-muted-foreground');
@@ -463,9 +519,9 @@ $('#form').addEventListener('submit', async e => {
     const steps = el('div', 'steps'); steps.setAttribute('role', 'progressbar'); steps.setAttribute('aria-label', 'Progresso de ' + model);
     const segs = [0, 1, 2].map(() => { const s = el('div', 'seg'), f = el('div'); s.appendChild(f); steps.appendChild(s); return { s, f }; });
     foot.append(line, steps);
-    card.append(head, sumHead, fold, pills, foot); box.appendChild(card);
+    card.append(head, sumHead, fold, wait, pills, foot); box.appendChild(card);
 
-    const p = panels[model] = { card, badge, text, sumHead, fold, meta, copy, pills, foot, label, elapsed, steps, segs,
+    const p = panels[model] = { card, badge, text, sumHead, fold, meta, copy, wait, pills, foot, label, elapsed, steps, segs,
                                 raw: '', tokens: 0, pct: 0, stage: null, stageStart: 0, timer: null, renderT: null,
                                 finished: false, pill: {} };
     toggle.onclick = () => {   // recolher/expandir o resumo
@@ -494,13 +550,18 @@ $('#form').addEventListener('submit', async e => {
     for (let i = 0; i < 3; i++)
       segSet(p, i, i < s.seg ? 'done' : i > s.seg ? 'idle' : (stage === 'generate' || stage === 'pull') ? 'det' : 'indet', 0);
     clearInterval(p.timer); tick(p); p.timer = setInterval(() => tick(p), 250);
+    updateWait(p);
   }
   function addPill(p, key, label, tipText) {
     if (p.pill[key]) { p.pill[key].b.textContent = label; return p.pill[key]; }
     const x = makePill(label, tipText || TIPS[key]); p.pills.appendChild(x.wrap); return p.pill[key] = x;
   }
+  // Nas apresentações que seguram o texto (parágrafos e texto completo) o card parece parado: o círculo
+  // girando mostra que o modelo continua trabalhando, da carga até concluir.
+  function updateWait(p) { p.wait.hidden = !(p.stage && !p.finished && (present.value === 'paragrafos' || present.value === 'completo')); }
   function renderSummary(p) {   // markdown do modelo; sem as bibliotecas, mostra o texto puro
     p.renderT = null;
+    updateWait(p);
     const t = visibleText(p.raw, present.value, p.finished);
     p.sumHead.hidden = p.fold.hidden = !t.trim();   // sem nada para mostrar ainda: só o andamento do rodapé
     if (!t.trim()) return;
@@ -524,6 +585,7 @@ $('#form').addEventListener('submit', async e => {
       expected = Math.min(600, Math.max(80, Math.round(ev.est_tokens * 0.35)));
       status.textContent = `Arquivo lido: ${ev.ftype} · ${ev.chars.toLocaleString('pt-BR')} caracteres · contexto ${ev.ctx}`;
       ev.warnings.forEach(w => box.appendChild(el('div', 'alert', w)));
+      if (ev.models) models = ev.models;   // ordem real de execução, decidida pelo servidor
       models.forEach(panel);
     } else if (ev.type === 'queue') {
       status.textContent = 'Outro job está rodando; aguardando a vez…';

@@ -5,3 +5,6 @@ outputs/*.db-*
 __pycache__/
 *.pyc
 .DS_Store
+
+# Configuração local do Compose (por exemplo, MODELS)
+.env

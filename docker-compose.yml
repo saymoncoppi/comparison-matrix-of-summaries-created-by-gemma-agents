@@ -1,3 +1,7 @@
+# Máximo de modelos na memória do Ollama E de modelos que o chat deixa marcar por execução. É o único lugar
+# onde o padrão é definido; para mudar: OLLAMA_MAX_LOADED_MODELS=1 docker compose up -d (ou no arquivo .env).
+x-max-models: &max_models ${OLLAMA_MAX_LOADED_MODELS:-2}
+
 services:
   ollama:
     image: ollama/ollama
@@ -8,10 +12,10 @@ services:
       - ollama:/root/.ollama
     restart: unless-stopped
     environment:
-      # Um modelo por vez na memória. Com vários carregados (cada um fica 10 min), a RAM acaba, o
-      # cache de disco encolhe e a leitura do modelo seguinte fica ~1,6x mais lenta (medido: 26 contra
-      # 42 tok/s no gemma4:e4b). Os modelos de uma comparação rodam em sequência, então não há perda.
-      OLLAMA_MAX_LOADED_MODELS: "1"
+      # No máximo 2 modelos na memória (cada um fica 10 min): uma comparação entre dois modelos pode ser repetida
+      # sem recarregar nenhum. Com 3 ou mais carregados a RAM acaba, o cache de disco encolhe e a leitura do
+      # modelo seguinte fica ~1,6x mais lenta (medido: 26 contra 42 tok/s no gemma4:e4b), por isso o teto é 2.
+      OLLAMA_MAX_LOADED_MODELS: *max_models
     # Para usar GPU NVIDIA (requer NVIDIA Container Toolkit), descomente:
     # deploy:
     #   resources:
@@ -26,7 +30,10 @@ services:
       timeout: 5s
       retries: 10
 
-  # Baixa o modelo uma vez, depois encerra.
+  # Baixa os modelos usados pelo chat (o que já existe termina na hora) e encerra. Numa instalação nova são
+  # ~10 GB, então demora; o chat sobe sem esperar e lista cada modelo conforme ele fica pronto (recarregue a
+  # página). Para baixar outros ou menos: MODELS="gemma3:1b gemma3:4b" docker compose up -d
+  # (ou defina MODELS num arquivo .env). Acompanhe com: docker compose logs -f pull-model
   pull-model:
     image: ollama/ollama
     depends_on:
@@ -34,7 +41,9 @@ services:
         condition: service_healthy
     environment:
       OLLAMA_HOST: http://ollama:11434
-    entrypoint: ["ollama", "pull", "gemma4:e4b"]
+      MODELS: ${MODELS:-gemma3:270m gemma3:1b gemma3:4b gemma4:e4b}
+    # $$ é o escape do Compose: o shell do container é quem expande $MODELS. Para na primeira falha.
+    entrypoint: ["sh", "-c", "for m in $$MODELS; do echo \"== $$m\"; ollama pull \"$$m\" || exit 1; done"]
     restart: "no"
 
   # Chat para enviar o arquivo e gerar o relatório HTML: http://localhost:8000
@@ -47,6 +56,7 @@ services:
     environment:
       OLLAMA_HOST: http://ollama:11434
       OUT_DIR: /outputs
+      MAX_MODELS: *max_models   # limite de modelos marcados na tela (mesmo valor do Ollama)
     user: "1000:1000"   # mesmo dono dos arquivos do host (./outputs)
     ports:
       - "127.0.0.1:8000:8000"

@@ -5,7 +5,7 @@ Chat local para **resumir PDF, TXT e MD** com modelos do [Ollama](https://ollama
 ## Requisitos
 
 - Docker com Docker Compose.
-- Uns 10 GB livres em disco para os modelos e 8 GB ou mais de RAM (o modelo maior usa cerca de 7 GB).
+- Uns 12 GB livres em disco para os quatro modelos (ocupam cerca de 10 GB) e 8 GB ou mais de RAM (o modelo maior usa cerca de 7 GB).
 - Internet na primeira vez, para baixar os modelos. Depois disso o resumo funciona offline. Só a aparência das páginas depende da internet (veja "Problemas comuns").
 - Não precisa de GPU. Tudo roda na CPU, só que mais devagar.
 
@@ -17,7 +17,15 @@ Na pasta do projeto:
 docker compose up -d --build
 ```
 
-Isso sobe o Ollama, baixa o modelo `gemma4:e4b` uma vez (cerca de 5,5 GB, pode demorar) e sobe o chat. Para subir só o chat e o Ollama, sem baixar nada:
+Isso sobe o Ollama, **baixa os quatro modelos usados pelo chat** (`gemma3:270m`, `gemma3:1b`, `gemma3:4b` e `gemma4:e4b`) e sobe o chat. Numa instalação nova são cerca de 10 GB, então **demora**. O chat não espera o download: ele lista cada modelo conforme fica pronto, então recarregue a página. Acompanhe com `docker compose logs -f pull-model`. Em uma máquina que já tem os modelos, a verificação leva alguns segundos.
+
+Para baixar outros modelos, ou só alguns, defina a variável `MODELS` (uma lista separada por espaços), na linha de comando ou num arquivo `.env` ao lado do `docker-compose.yml`:
+
+```bash
+MODELS="gemma3:1b gemma3:4b" docker compose up -d --build
+```
+
+Se algum nome não existir, o download para ali e o `pull-model` termina com erro (veja os logs). Para subir só o chat e o Ollama, sem baixar nada:
 
 ```bash
 docker compose up -d --build chat
@@ -29,7 +37,9 @@ Para parar: `docker compose down`. Os modelos e o banco continuam guardados.
 
 ## Usar o chat
 
-1. **Escolha os modelos.** Os botões no rodapé listam os modelos já instalados. Clique para marcar ou desmarcar. Com **um** modelo você recebe um resumo; com **dois ou mais**, uma comparação. Para usar um modelo que ainda não está na lista, instale-o antes (por exemplo `docker exec ollama ollama pull gemma3:12b`) e recarregue a página.
+1. **Escolha os modelos.** Os botões no rodapé listam os modelos já instalados, **do mais leve ao mais pesado** (pelo tamanho em disco). Clique para marcar ou desmarcar. Com **um** modelo você recebe um resumo; com **dois**, uma comparação. Você pode marcar **no máximo dois** modelos por execução: esse limite vem do `docker-compose.yml` (veja "Máximo de modelos por execução" abaixo). O contador ao lado de "Modelos" mostra quantos estão marcados (por exemplo, "· 1 de 2"); ao atingir o limite, os outros botões ficam esmaecidos, e tentar marcar mais um mostra um aviso em vermelho por alguns segundos. Desmarque um para escolher outro. Para usar um modelo que ainda não está na lista, instale-o antes (por exemplo `docker exec ollama ollama pull gemma3:12b`) e recarregue a página.
+
+   **Os modelos rodam sempre do mais leve para o mais pesado**, qualquer que seja a ordem em que você os marcou. Se você marcar o `gemma3:4b` e depois o `gemma3:1b`, o `1b` roda primeiro. A mensagem do arquivo na conversa, os cartões e as linhas do relatório seguem essa mesma ordem.
 2. **Anexe o arquivo.** Clique em "Escolher arquivo" ou arraste o arquivo para a área tracejada. Formatos aceitos: **PDF, TXT e MD**, até 20 MB.
 3. **Clique em "Executar".** O arquivo aparece como mensagem sua, e cada modelo ganha um cartão que mostra o resumo sendo escrito ao vivo, dentro do próprio cartão. Os modelos rodam **um de cada vez**; os que ainda não começaram aparecem como "na fila".
 4. **Acompanhe as etapas** de cada modelo. Cada análise passa por três etapas, e o rodapé do cartão mostra a etapa atual, um cronômetro e uma barra dividida em três trechos (carga, leitura e geração):
@@ -53,7 +63,7 @@ O botão de **três pontinhos** (⋮), no topo do chat, abre um menu com **Hist�
 
 O status se mantém **sempre atualizado** com o [htmx](https://htmx.org): a página consulta o Ollama ao carregar, **a cada 10 segundos** (enquanto a aba está visível), ao voltar para a aba e ao abrir o menu. Se o próprio chat sair do ar, a bolinha fica vermelha com "Servidor do chat inacessível".
 
-**Configurações.** O item **Configurações** abre uma janela com duas opções. Nada nela é salvo: os valores vivem só na página, e ao recarregar tudo volta ao padrão.
+**Configurações.** O item **Configurações** abre uma janela com três itens: dois editáveis (o prompt e a apresentação da resposta) e um informativo (o máximo de modelos por execução). O que você edita **não é salvo**: os valores vivem só na página, e ao recarregar tudo volta ao padrão.
 
 **1. Prompt.** É o texto da instrução enviada ao modelo antes do conteúdo do arquivo (o chat acrescenta o texto do arquivo depois dela, entre `---`). Para ajustar o prompt sem mexer no código:
 
@@ -72,7 +82,11 @@ O status se mantém **sempre atualizado** com o [htmx](https://htmx.org): a pág
 | **Parágrafos** | Só parágrafos completos: um parágrafo aparece quando o modelo o fecha com uma linha em branco. Se o modelo escrever um parágrafo só, ele aparece no fim. |
 | **Texto Completo** | Nada do texto até a geração terminar; então ele aparece inteiro. Enquanto isso, o rodapé do card mostra a etapa e o cronômetro. |
 
+Como em **Parágrafos** e **Texto Completo** o texto fica retido e o card pareceria parado, nesses dois modos aparece um **ícone de carregamento (um círculo girando) no centro do card** enquanto o modelo trabalha, da carga até concluir. Em Parágrafos ele continua visível mesmo depois que os primeiros parágrafos aparecem, porque ainda faltam outros. O ícone aparece ou some na hora se você trocar a opção durante a análise.
+
 Quando o modelo conclui, o card mostra sempre o texto inteiro, qualquer que seja a opção. O relatório também sempre mostra o texto completo.
+
+**3. Máximo de modelos por execução.** Mostra, num campo **bloqueado** (não dá para editar), quantos modelos podem ficar marcados ao mesmo tempo. O valor **vem do `docker-compose.yml`**: é o mesmo `OLLAMA_MAX_LOADED_MODELS`, o número de modelos que o Ollama mantém na memória (aqui, **2**). O compose define o valor uma única vez e o entrega ao Ollama e ao chat; para mudá-lo, edite o compose (ou use `OLLAMA_MAX_LOADED_MODELS=1 docker compose up -d`) e recrie os serviços. O chat respeita o limite nos botões de modelo, e o servidor também recusa uma requisição com mais modelos do que o permitido.
 
 **Clicar no item de status:**
 
@@ -85,7 +99,7 @@ O **Histórico** lista todos os resultados, do mais recente para o mais antigo: 
 
 ## Telas
 
-**Tela inicial:** escolha os modelos, anexe o arquivo e clique em Executar.
+**Tela inicial:** escolha até dois modelos (listados do mais leve ao mais pesado), anexe o arquivo e clique em Executar.
 
 ![Tela inicial do chat](assets/home.png)
 
@@ -105,7 +119,11 @@ O **Histórico** lista todos os resultados, do mais recente para o mais antigo: 
 
 ![Menu com Histórico, Configurações, Ajuda e o status do Ollama](assets/menu.png)
 
-**Configurações:** o prompt (o padrão aparece em cinza quando o campo está em branco) e a apresentação da resposta.
+**Limite de modelos:** com dois modelos marcados, os demais ficam esmaecidos, o contador mostra "2 de 2" e tentar marcar um terceiro exibe o aviso.
+
+![Limite de dois modelos atingido](assets/limite-modelos.png)
+
+**Configurações:** o prompt (o padrão aparece em cinza quando o campo está em branco), a apresentação da resposta e o máximo de modelos por execução (campo bloqueado, vindo do compose).
 
 ![Janela de Configurações](assets/settings.png)
 
@@ -140,6 +158,8 @@ Separar carga, leitura e geração evita comparar modelos pelo tempo errado: um 
 
 ## Modelos sugeridos
 
+Os quatro abaixo são baixados automaticamente pelo `docker compose up` (veja "Subir o serviço").
+
 | Modelo | Tamanho | Quando usar |
 |---|---|---|
 | `gemma3:270m` | 291 MB | Testes rápidos. **Não é confiável para resumir**: costuma escrever em primeira pessoa ou inventar. |
@@ -151,8 +171,8 @@ Os tempos dependem da sua máquina. Em um notebook sem GPU, um PDF de uma págin
 
 ## Como funciona e limites
 
-- **Um job por vez.** Se você enviar outro enquanto um roda, ele espera na fila. Rodar modelos em paralelo na CPU não ganha tempo e ainda falseia as medições.
-- **Um modelo por vez na memória.** O serviço `ollama` usa `OLLAMA_MAX_LOADED_MODELS=1`: ao carregar o modelo seguinte, o Ollama descarrega o anterior. Com vários modelos carregados ao mesmo tempo (cada um fica 10 minutos), a RAM acaba, o cache de disco encolhe e a leitura fica mais lenta; no teste, o `gemma4:e4b` leu a 26 tok/s com três modelos carregados e a 42 tok/s com só ele. O custo é que repetir uma comparação recarrega o primeiro modelo.
+- **Um job por vez.** Se você enviar outro enquanto um roda, ele espera na fila. Rodar modelos em paralelo na CPU não ganha tempo e ainda falseia as medições. Os modelos de uma comparação rodam em sequência, **do mais leve ao mais pesado**.
+- **Até dois modelos na memória.** O serviço `ollama` usa `OLLAMA_MAX_LOADED_MODELS=2`. Cada modelo fica 10 minutos carregado depois do último uso, então **repetir uma comparação entre dois modelos não recarrega nenhum deles**. Por isso o chat só deixa marcar **dois** modelos por execução (o mesmo valor do compose); acima disso o Ollama descarregaria um para carregar o seguinte. O teto é 2 porque a memória é o limite: com **três** modelos carregados, a RAM disponível caiu a 2,3 GB e a leitura do `gemma4:e4b` caiu de 42 para 26 tok/s. Com o par mais pesado (`gemma4:e4b` + `gemma3:4b`) sobraram 4,4 GB e a leitura do `e4b` não mudou (21 a 23 tok/s com o `4b` carregado, contra 21 a 22 sozinho); a margem, porém, é menor e o uso de swap sobe um pouco. Se a sua máquina ficar lenta ou com pouca RAM livre (`free -h`), volte o valor para `1` no `docker-compose.yml`.
 - **Resultado reproduzível.** Os modelos rodam com `temperature 0` e o modo de raciocínio desligado (`think: false`).
 - **Contexto ajustado ao texto.** O chat calcula o tamanho de contexto de que o arquivo precisa. Se o texto for grande demais (acima de 16384 tokens), o relatório traz um **aviso** de que o modelo viu só parte dele.
 - **Resumo cortado.** O resumo tem teto de 1024 tokens. Se o modelo chegar ao limite, o cartão mostra o pill "resumo cortado" e a linha do relatório é marcada com "cortado em 1024 tokens".
@@ -185,19 +205,22 @@ Variáveis do serviço `chat` (no `docker-compose.yml`):
 | `OUT_DIR` | `/outputs` | Pasta onde fica o banco. |
 | `DB_PATH` | `$OUT_DIR/resumos.db` | Caminho do banco. |
 | `PORT` | `8000` | Porta dentro do container. |
+| `MAX_MODELS` | `2` (vem do compose) | Máximo de modelos marcados por execução. Não é definido à mão: o compose o preenche com o mesmo valor de `OLLAMA_MAX_LOADED_MODELS`. |
 
 A porta no seu computador é a primeira de `127.0.0.1:8000:8000`. Mude-a se a 8000 estiver ocupada. O chat só aceita conexões da própria máquina.
 
-Variável do serviço `ollama`: `OLLAMA_MAX_LOADED_MODELS` (aqui, `1`) define quantos modelos ficam na memória ao mesmo tempo. Se você tem bastante RAM sobrando e quer manter vários modelos prontos, aumente o valor; veja "Como funciona e limites" para o custo disso.
+Variável do serviço `ollama`: `OLLAMA_MAX_LOADED_MODELS` (aqui, `2`) define quantos modelos ficam na memória ao mesmo tempo, e o mesmo valor limita quantos modelos podem ser marcados no chat. Ele é definido **uma vez** no `docker-compose.yml` (`x-max-models`) e pode ser trocado sem editar o arquivo: `OLLAMA_MAX_LOADED_MODELS=1 docker compose up -d` (ou no arquivo `.env`). Com pouca RAM, use `1`; com bastante RAM sobrando, dá para aumentar. Veja "Como funciona e limites" para o custo. Depois de mudar o valor, o Ollama é recriado (isso descarrega os modelos da memória) e a Configurações do chat passa a mostrar o novo máximo.
 
 Para usar GPU NVIDIA, instale o NVIDIA Container Toolkit e descomente o bloco `deploy` do serviço `ollama`.
 
 ## Problemas comuns
 
 - **"Ollama indisponível".** Veja `docker compose ps` e `docker compose logs ollama`. O serviço `ollama` precisa estar `healthy`.
-- **O primeiro uso de um modelo demora.** É a etapa "Carregando modelo": o Ollama coloca o modelo na memória, e isso leva de poucos segundos a algumas dezenas de segundos nos modelos grandes. Depois ele fica 10 minutos carregado, mas, como só um modelo fica na memória por vez, trocar de modelo recarrega.
-- **Quero outro modelo, mas ele não aparece.** O chat só lista modelos instalados. Rode `docker exec ollama ollama pull <modelo>` e recarregue a página. Se o download travar, rode o mesmo comando de novo: ele retoma de onde parou.
-- **O resumo só aparece no final (ou aos pedaços).** Confira **Configurações → Apresentação da resposta**: em "Texto Completo" o texto só entra quando a geração termina, e em "Palavras" e "Parágrafos" ele entra por partes.
+- **O primeiro uso de um modelo demora.** É a etapa "Carregando modelo": o Ollama coloca o modelo na memória, e isso leva de poucos segundos a algumas dezenas de segundos nos modelos grandes. Depois ele fica 10 minutos carregado. Como o Ollama mantém no máximo dois modelos na memória, comparações com três ou mais modelos recarregam algum deles.
+- **Instalação nova e a lista de modelos está vazia ou incompleta.** Os modelos ainda estão sendo baixados pelo serviço `pull-model`. Veja o andamento com `docker compose logs -f pull-model` e recarregue a página quando terminar.
+- **Não consigo marcar mais modelos.** O chat limita a quantidade de modelos por execução ao valor do `docker-compose.yml` (veja Configurações → "Máximo de modelos por execução"). Desmarque um para escolher outro.
+- **Quero outro modelo, mas ele não aparece.** O chat só lista modelos instalados. Rode `docker exec ollama ollama pull <modelo>` e recarregue a página (ou acrescente o nome em `MODELS`, como em "Subir o serviço"). Se o download travar, rode o mesmo comando de novo: ele retoma de onde parou.
+- **O resumo só aparece no final (ou aos pedaços).** Confira **Configurações → Apresentação da resposta**: em "Texto Completo" o texto só entra quando a geração termina, e em "Palavras" e "Parágrafos" ele entra por partes. Em "Parágrafos" e "Texto Completo", o círculo girando no card indica que o modelo continua trabalhando.
 - **As configurações sumiram.** É o esperado: prompt e apresentação não são salvos e voltam ao padrão quando a página é recarregada.
 - **A Ajuda mostra um README antigo.** O arquivo é montado no container; se o editor o substituiu por um novo, reinicie com `docker compose restart chat`.
 - **"PDF sem texto extraível".** O PDF é uma imagem escaneada. É preciso passar por OCR antes (por exemplo com `ocrmypdf`).
@@ -214,7 +237,7 @@ curl -N -X POST -H 'X-Upload: 1' --data-binary @arquivo.pdf \
   'http://localhost:8000/api/summarize?models=gemma3:1b,gemma3:4b&filename=arquivo.pdf'
 ```
 
-A resposta é uma linha de JSON por evento (início de cada modelo, texto gerado, tempos). O último evento, `{"type":"done","report":"/reports/N"}`, indica o relatório em `http://localhost:8000/reports/N`. O cabeçalho `X-Upload: 1` é obrigatório. Para usar um prompt próprio nessa execução, acrescente `&prompt=` com o texto codificado na URL (até 4000 caracteres); sem ele, vale o prompt padrão. Se um dos modelos da lista não estiver instalado, a API o baixa sozinha.
+A resposta é uma linha de JSON por evento (início de cada modelo, texto gerado, tempos). O primeiro evento (`info`) traz a lista `models` na **ordem real de execução**, do mais leve ao mais pesado, mesmo que você tenha pedido outra ordem. A lista aceita no máximo o número de modelos definido no compose (hoje 2); acima disso a API responde com erro 400. O último evento, `{"type":"done","report":"/reports/N"}`, indica o relatório em `http://localhost:8000/reports/N`. O cabeçalho `X-Upload: 1` é obrigatório. Para usar um prompt próprio nessa execução, acrescente `&prompt=` com o texto codificado na URL (até 4000 caracteres); sem ele, vale o prompt padrão. Se um dos modelos da lista não estiver instalado, a API o baixa sozinha.
 
 ## Estrutura do projeto
 

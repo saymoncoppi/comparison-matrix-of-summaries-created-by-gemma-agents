@@ -148,9 +148,9 @@ O `docker-compose.yml` do projeto (na raiz) vai além dessa versão mínima e te
 
 | Serviço | Função |
 |---|---|
-| `ollama` | O servidor do Ollama, com *healthcheck* (só fica "saudável" quando responde), um modelo por vez na memória (`OLLAMA_MAX_LOADED_MODELS=1`) e um bloco de GPU NVIDIA comentado, pronto para descomentar. |
-| `pull-model` | Baixa o `gemma4:e4b` uma vez e encerra. Se o modelo já existe, termina na hora. |
-| `chat` | O chat web, em `http://localhost:8000`. Fala com o Ollama pela rede interna do Compose. |
+| `ollama` | O servidor do Ollama, com *healthcheck* (só fica "saudável" quando responde), no máximo dois modelos na memória (`OLLAMA_MAX_LOADED_MODELS=2`) e um bloco de GPU NVIDIA comentado, pronto para descomentar. |
+| `pull-model` | Baixa os quatro modelos do chat (`gemma3:270m`, `gemma3:1b`, `gemma3:4b` e `gemma4:e4b`) e encerra; o que já existe é só verificado. A lista é configurável pela variável `MODELS`. |
+| `chat` | O chat web, em `http://localhost:8000`. Fala com o Ollama pela rede interna do Compose e recebe do compose o limite de modelos por execução (`MAX_MODELS`, o mesmo valor do Ollama). |
 
 > No WSL2, a GPU só fica disponível no container se o Docker estiver configurado com suporte a GPU (Docker Desktop com integração WSL ou NVIDIA Container Toolkit).
 
@@ -166,13 +166,17 @@ Na pasta do projeto:
 docker compose up -d --build
 ```
 
-Isso sobe o Ollama, baixa o `gemma4:e4b` (cerca de 5,5 GB na primeira vez) e sobe o chat. Para subir só o chat e o Ollama, sem baixar nada, use `docker compose up -d --build chat`. Depois abra **http://localhost:8000**. Para parar, `docker compose down`; os modelos e o histórico continuam guardados.
+Isso sobe o Ollama, baixa os quatro modelos do chat (cerca de 10 GB na primeira vez, então demora; o chat lista cada modelo conforme fica pronto) e sobe o chat. Para outros modelos, use `MODELS="gemma3:1b gemma3:4b" docker compose up -d`. Para subir só o chat e o Ollama, sem baixar nada, use `docker compose up -d --build chat`. Depois abra **http://localhost:8000**. Para parar, `docker compose down`; os modelos e o histórico continuam guardados.
 
 ### Gerar um resumo ou uma comparação
 
 ![Tela inicial do chat](../assets/home.png)
 
-Na tela inicial, escolha os **modelos** (botões de baixo), anexe o arquivo (PDF, TXT ou MD, até 20 MB) e clique em **Executar**. Com um modelo você recebe um resumo; com dois ou mais, uma comparação. Para usar um modelo que ainda não está instalado, baixe-o antes (`docker exec ollama ollama pull gemma3:12b`) e recarregue a página.
+Na tela inicial, escolha os **modelos** (botões de baixo, listados do mais leve ao mais pesado; no máximo dois por execução), anexe o arquivo (PDF, TXT ou MD, até 20 MB) e clique em **Executar**. Com um modelo você recebe um resumo; com dois, uma comparação. Os modelos rodam sempre do **mais leve para o mais pesado**, qualquer que seja a ordem em que você os marcou.
+
+![Limite de dois modelos atingido](../assets/limite-modelos.png)
+
+O limite de **dois modelos** vem do `docker-compose.yml` (o mesmo `OLLAMA_MAX_LOADED_MODELS` do Ollama). O contador mostra "2 de 2", os demais botões ficam esmaecidos e tentar marcar um terceiro exibe um aviso. Para usar um modelo que ainda não está instalado, baixe-o antes (`docker exec ollama ollama pull gemma3:12b`) e recarregue a página.
 
 ![Comparação em andamento](../assets/comparisson-first-model.png)
 
@@ -206,7 +210,7 @@ Clicar no status **online** abre os **modelos instalados**: parâmetros, quantiz
 
 ![Janela de Configurações](../assets/settings.png)
 
-Em **Configurações** você edita o **prompt**, a instrução enviada ao modelo antes do texto do arquivo (em branco, vale o padrão, mostrado em cinza). A mudança vale na próxima execução e não é salva. Há também a **apresentação da resposta**, que define como o resumo entra no card enquanto é gerado: por tokens, palavras, parágrafos ou só o texto completo no fim.
+Em **Configurações** você edita o **prompt**, a instrução enviada ao modelo antes do texto do arquivo (em branco, vale o padrão, mostrado em cinza). A mudança vale na próxima execução e não é salva. Há também a **apresentação da resposta**, que define como o resumo entra no card enquanto é gerado: por tokens, palavras, parágrafos ou só o texto completo no fim. Em parágrafos e texto completo, um círculo girando no centro do card mostra que o modelo continua trabalhando enquanto o texto fica retido. O terceiro item, **máximo de modelos por execução**, é um campo bloqueado: mostra o limite que vem do `docker-compose.yml` (hoje 2) e não pode ser alterado na tela.
 
 ![Ajuda dentro do chat](../assets/help.png)
 
@@ -242,7 +246,7 @@ Sem GPU, a **carga** e a **leitura** do texto costumam pesar mais que a geraçã
 
 **Por que a leitura é mais lenta no modelo maior, se o texto já foi extraído?** Porque "ler" não é copiar o texto: o modelo passa cada token por todas as suas camadas para montar a sua memória de atenção. É cálculo, e cresce com o tamanho do modelo. Com o mesmo texto (~575 tokens) e o modelo já carregado, o `gemma3:1b` leu a 71 tok/s e o `gemma4:e4b` a 15 tok/s. O resultado dessa leitura é próprio de cada modelo, então não é reaproveitado pelo seguinte. Só repetir exatamente o mesmo prompt no mesmo modelo, ainda carregado, torna a leitura quase instantânea (menos de meio segundo).
 
-**Memória:** manter vários modelos carregados ao mesmo tempo piora a leitura. Com os três modelos abertos (2,3 GB de RAM livre), o `gemma4:e4b` leu a 26 tok/s; com só ele (6,5 GB livres), a 42 tok/s. Por isso o `docker-compose.yml` usa `OLLAMA_MAX_LOADED_MODELS=1`: o Ollama descarrega o modelo anterior ao carregar o próximo.
+**Memória:** manter vários modelos carregados ao mesmo tempo piora a leitura. Com **três** modelos abertos (2,3 GB de RAM livre), o `gemma4:e4b` leu a 26 tok/s; com só ele (6,5 GB livres), a 42 tok/s. Por isso o `docker-compose.yml` limita o Ollama a **dois** modelos (`OLLAMA_MAX_LOADED_MODELS=2`) e o chat, ao mesmo valor: só dá para marcar dois modelos por execução, e repetir uma comparação entre eles não recarrega nenhum. O valor é definido uma única vez no compose e entregue ao Ollama e ao chat. No teste do par mais pesado (`gemma4:e4b` + `gemma3:4b`), a RAM livre ficou em 4,4 GB e a leitura do `e4b` não mudou (21 a 23 tok/s com o `4b` ao lado, contra 21 a 22 sozinho), mas a margem é menor e o swap sobe um pouco. Em máquinas com pouca RAM, use `1`.
 
 Medições feitas num notebook Intel i7-1185G7 (4 núcleos, 8 threads), sem GPU, com 20 GB de RAM no WSL2. Os seus números vão variar, e o mesmo teste oscilou até cerca de 15% entre rodadas:
 
@@ -250,7 +254,7 @@ Medições feitas num notebook Intel i7-1185G7 (4 núcleos, 8 threads), sem GPU,
 |---|---|
 | Padrão do Ollama (4 threads, uma por núcleo físico) | **O melhor.** Geração de 6 a 7 tok/s no `gemma4:e4b`. |
 | Usar as 8 threads | **Pior:** a geração caiu de ~7 para ~2 tok/s. Não aumente o número de threads. |
-| Um modelo por vez na memória (`OLLAMA_MAX_LOADED_MODELS=1`) | **Melhor:** libera RAM e cache de disco. Com os três modelos carregados, a leitura do `gemma4:e4b` foi 26 tok/s; com só ele, 42 tok/s. Já é o padrão do `docker-compose.yml`. |
+| No máximo dois modelos na memória (`OLLAMA_MAX_LOADED_MODELS=2`) | **Melhor que três ou mais:** com três modelos carregados, a leitura do `gemma4:e4b` foi 26 tok/s; com só ele, 42 tok/s. Com o par mais pesado (`e4b` + `4b`) a leitura não mudou, mas sobram só ~4,4 GB de RAM. Já é o padrão do `docker-compose.yml`; use `1` se faltar memória. |
 | `OLLAMA_FLASH_ATTENTION=1` | Pior: a leitura caiu de ~31 para ~25 tok/s no `gemma3:4b`. |
 | GPU integrada Intel | Inviável no WSL2 com o Ollama em container: o pacote Mesa do Ubuntu não traz o driver `dzn` e não existe `/dev/dri`. |
 
