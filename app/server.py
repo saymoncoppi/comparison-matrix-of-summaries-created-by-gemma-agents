@@ -6,6 +6,7 @@ a partir do banco. Só biblioteca padrão. Um job por vez (a CPU é o gargalo:
 rodar modelos em paralelo não reduz o tempo total e distorce as medições).
 """
 import html
+import ipaddress
 import json
 import os
 import re
@@ -44,7 +45,30 @@ KEEP_ALIVE = "10m"            # quanto tempo o modelo fica na memória depois do
 CTX_MIN, CTX_MAX = 2048, 16384
 MODEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,100}$")
 
+# Cabeçalho Host aceito, contra DNS rebinding: localhost, qualquer endereço IP (é como se acessa pela rede
+# local) e os nomes listados em ALLOWED_HOSTS (separados por vírgula; "*" libera tudo). Outros nomes são recusados.
+ALLOWED_HOSTS = {h.strip().lower() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()}
+
 job_lock = threading.Lock()
+
+
+def host_allowed(header, allowed=None):
+    h = (header or "").strip().lower()
+    if h.startswith("["):                       # IPv6 com porta: [::1]:8000
+        end = h.find("]")
+        host = h[1:end] if end > 0 else ""
+    else:                                       # "host:porta" ou só "host"
+        host = h.rsplit(":", 1)[0] if h.count(":") == 1 else h
+    if not host:
+        return False
+    allowed = ALLOWED_HOSTS if allowed is None else allowed
+    if "*" in allowed or host == "localhost" or host in allowed:
+        return True
+    try:
+        ipaddress.ip_address(host)              # IP literal: não é vetor de DNS rebinding
+        return True
+    except ValueError:
+        return False
 
 
 class UserError(Exception):
@@ -635,9 +659,7 @@ class Handler(BaseHTTPRequestHandler):
         self._send(code, page, "text/html; charset=utf-8")
 
     def _host_ok(self):
-        # Contra DNS rebinding: só aceita localhost / 127.0.0.1.
-        host = (self.headers.get("Host") or "").split(":")[0]
-        return host in ("localhost", "127.0.0.1", "[::1]")
+        return host_allowed(self.headers.get("Host"))
 
     def do_GET(self):
         if not self._host_ok():

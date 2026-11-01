@@ -325,6 +325,9 @@ O `pull` retoma de onde parou; rode o comando de novo. Confira também o espaço
 ### `port is already allocated` (11434 ou 8000)
 Já existe um Ollama (porta 11434) ou outro serviço (porta 8000, a do chat) ocupando a porta, seja uma instalação local ou outro container. Pare-o ou mapeie outra porta no host, ex.: `-p 11435:11434`, ou, no `docker-compose.yml`, troque o número da esquerda em `127.0.0.1:8000:8000`.
 
+### Acessar o chat de outra máquina
+O compose publica o chat em `0.0.0.0:8000`, então ele aceita conexões da rede local: na outra máquina, abra `http://<IP do computador>:8000`. Em WSL2 com rede espelhada é preciso também uma regra no firewall do Hyper-V para a porta 8000. O chat não tem login, então use só em rede confiável. Para limitar ao próprio computador, troque a linha para `"127.0.0.1:8000:8000"`. Os detalhes, com os comandos, estão na seção "Acessar de outra máquina" do [README](../README.md).
+
 ### `pdftotext: command not found`
 Instale o pacote: `sudo apt install poppler-utils`. (No chat isso não é necessário: o `pdftotext` já vem dentro da imagem.)
 

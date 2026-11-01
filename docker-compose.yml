@@ -60,9 +60,12 @@ services:
       OLLAMA_HOST: http://ollama:11434
       OUT_DIR: /outputs
       MAX_MODELS: *max_models   # limite de modelos marcados na tela (mesmo valor do Ollama)
+      ALLOWED_HOSTS: ""   # nomes (além de localhost e IPs) aceitos no cabeçalho Host; ex.: "meu-pc,meu-pc.local"
     user: "1000:1000"   # mesmo dono dos arquivos do host (./outputs)
     ports:
-      - "127.0.0.1:8000:8000"
+      # 0.0.0.0: aceita conexões da rede local, não só deste computador. Para só este computador, use
+      # "127.0.0.1:8000:8000". Veja "Acessar de outra máquina" no README: há firewall e segurança a considerar.
+      - "0.0.0.0:8000:8000"
     volumes:
       - ./outputs:/outputs
       - ./README.md:/app/README.md:ro   # texto da página /help

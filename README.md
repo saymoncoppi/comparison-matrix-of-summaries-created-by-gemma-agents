@@ -209,11 +209,30 @@ Variáveis do serviço `chat` (no `docker-compose.yml`):
 | `PORT` | `8000` | Porta dentro do container. |
 | `MAX_MODELS` | `2` (vem do compose) | Máximo de modelos marcados por execução. Não é definido à mão: o compose o preenche com o mesmo valor de `OLLAMA_MAX_LOADED_MODELS`. |
 
-A porta no seu computador é a primeira de `127.0.0.1:8000:8000`. Mude-a se a 8000 estiver ocupada. O chat só aceita conexões da própria máquina.
+A porta no seu computador é a primeira de `0.0.0.0:8000:8000`. Mude o número se a 8000 estiver ocupada. O chat aceita conexões da rede local; para limitá-lo a este computador, veja "Acessar de outra máquina".
 
 Variável do serviço `ollama`: `OLLAMA_MAX_LOADED_MODELS` (aqui, `2`) define quantos modelos ficam na memória ao mesmo tempo, e o mesmo valor limita quantos modelos podem ser marcados no chat. Ele é definido **uma vez** no `docker-compose.yml` (`x-max-models`) e pode ser trocado sem editar o arquivo: `OLLAMA_MAX_LOADED_MODELS=1 docker compose up -d` (ou no arquivo `.env`). Com pouca RAM, use `1`; com bastante RAM sobrando, dá para aumentar. Veja "Como funciona e limites" para o custo. Depois de mudar o valor, o Ollama é recriado (isso descarrega os modelos da memória) e a Configurações do chat passa a mostrar o novo máximo.
 
 Para usar GPU NVIDIA, instale o NVIDIA Container Toolkit e descomente o bloco `deploy` do serviço `ollama`.
+
+## Acessar de outra máquina
+
+O chat já aceita conexões da rede local: o `docker-compose.yml` publica a porta em `0.0.0.0:8000`. Na outra máquina, abra `http://<IP deste computador>:8000`.
+
+Para aceitar **só este computador**, troque a linha `"0.0.0.0:8000:8000"` por `"127.0.0.1:8000:8000"` no serviço `chat` e rode `docker compose up -d`. Para escutar só em uma placa de rede, use o IP dela (por exemplo `"192.168.0.15:8000:8000"`).
+
+**Endereço.** O chat aceita acesso por **IP**. Para usar um nome (por exemplo `http://meu-pc:8000`), liste-o em `ALLOWED_HOSTS`, no serviço `chat` do `docker-compose.yml` (por exemplo `ALLOWED_HOSTS: "meu-pc,meu-pc.local"`), e rode `docker compose up -d`. Qualquer outro nome recebe erro 403: é a proteção contra *DNS rebinding*, em que um site malicioso faz o seu navegador falar com um serviço local. O valor `"*"` libera todos os nomes, mas desliga essa proteção.
+
+**Firewall no WSL2 com rede espelhada** (`networkingMode=mirrored` no `.wslconfig`). O firewall do Hyper-V bloqueia por padrão as conexões que chegam de fora, então só publicar a porta não basta. Crie uma regra **apenas para a porta 8000**, no PowerShell **como administrador**:
+
+```powershell
+New-NetFirewallHyperVRule -Name "ResumosLocais-8000" -DisplayName "Resumos locais (porta 8000)" `
+  -Direction Inbound -VMCreatorId '{40E0AC32-46A5-438A-A0B2-2B479E8F2E90}' -Protocol TCP -LocalPorts 8000
+```
+
+Para remover depois: `Remove-NetFirewallHyperVRule -Name "ResumosLocais-8000"`. **Não** mude o `DefaultInboundAction` para `Allow`: isso abriria todas as portas publicadas pelos containers do computador, como bancos de dados.
+
+**Segurança.** O chat **não tem login**. Quem alcançar a porta vê o histórico (os resumos dos seus documentos), pode enviar arquivos e gasta a CPU do computador rodando modelos. Como o compose publica em `0.0.0.0`, quem clonar o projeto e subir os serviços também fica acessível pela rede local; use só em uma rede confiável, como a de casa ou do escritório, e nunca exponha à internet. Outro ponto: a porta do Ollama (`11434`) também é publicada em todas as interfaces, e a API dele não tem autenticação; se você não precisa dela fora do computador, troque a linha `"11434:11434"` por `"127.0.0.1:11434:11434"`.
 
 ## Problemas comuns
 
@@ -228,6 +247,7 @@ Para usar GPU NVIDIA, instale o NVIDIA Container Toolkit e descomente o bloco `d
 - **"PDF sem texto extraível".** O PDF é uma imagem escaneada. É preciso passar por OCR antes (por exemplo com `ocrmypdf`).
 - **Muito lento.** Sem GPU o modelo roda na CPU. Use um modelo menor, feche outros programas e confira a memória livre. No WSL2, a memória é limitada pelo `.wslconfig`.
 - **Página sem estilo ou resumo sem formatação.** O visual vem de bibliotecas carregadas da internet (Tailwind, htmx e renderizador de Markdown). Sem rede o conteúdo continua legível, só mais simples, e o status do Ollama mostra "Status indisponível (htmx não carregou)".
+- **Não abre de outra máquina.** Confira, nesta ordem: (1) a regra de firewall da porta 8000 (veja "Acessar de outra máquina"); (2) o endereço: use o IP, ou liste o nome em `ALLOWED_HOSTS` (um erro 403 indica nome não permitido); (3) as duas máquinas estão na mesma rede; (4) a linha de `ports` do chat no compose é `0.0.0.0:8000:8000` e o serviço foi recriado com `docker compose up -d`.
 - **Porta 8000 ou 11434 em uso.** Troque o número da porta do lado esquerdo no `docker-compose.yml`.
 
 ## Uso pela linha de comando (opcional)
