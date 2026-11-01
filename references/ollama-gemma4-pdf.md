@@ -180,7 +180,7 @@ O limite de **dois modelos** vem do `docker-compose.yml` (o mesmo `OLLAMA_MAX_LO
 
 ![Comparação em andamento](../assets/comparisson-first-model.png)
 
-Cada modelo roda **um de cada vez** e tem um cartão com o resumo sendo escrito ao vivo. O rodapé do cartão mostra a **etapa atual** (*Carregando modelo*, *Executando leitura*, *Gerando resultados*), um cronômetro e uma barra dividida em três trechos, um para cada etapa. Os **pills de tempo** (carga, leitura, geração e tokens por segundo) aparecem conforme cada etapa termina, e o selo do cartão vira **concluído** (verde) no fim. Na captura acima, o primeiro modelo já concluiu e o segundo está nas etapas iniciais.
+Cada modelo roda **um de cada vez** e tem um cartão com o resumo sendo escrito ao vivo. O rodapé do cartão mostra a **etapa atual** (*Carregando modelo*, *Executando leitura*, *Gerando resultados*), um cronômetro e uma barra dividida em três trechos, um para cada etapa. Os **pills de tempo** (carga, leitura, geração e tokens por segundo) aparecem conforme cada etapa termina, e o selo do cartão vira **concluído** (verde) no fim. Na captura acima, o primeiro modelo já concluiu e o segundo está gerando o resultado (com a carga e a leitura já registradas nos pills). As capturas desta seção usam o arquivo `samples/exemplo_llm.txt`, com os modelos `gemma3:1b` e `gemma3:4b`.
 
 
 ![Comparação concluída](../assets/comparisson-second-model.png)
@@ -242,7 +242,7 @@ for row in sqlite3.connect('/outputs/resumos.db').execute(
 
 ### Desempenho na CPU
 
-Sem GPU, a **carga** e a **leitura** do texto costumam pesar mais que a geração, principalmente nos modelos maiores. Nas capturas acima, o `gemma3:1b` levou menos de 20 segundos no total, e o `gemma4:e4b` passou de 100 segundos. O primeiro uso de um modelo paga a carga; depois ele fica 10 minutos na memória.
+Sem GPU, a **carga** e a **leitura** do texto costumam pesar mais que a geração, principalmente nos modelos maiores. Nas capturas acima (mesmo arquivo, os dois modelos partindo da memória vazia), o `gemma3:1b` levou cerca de 17 segundos no total (carga 1,6 s, leitura 5,6 s, geração 10,2 s), e o `gemma3:4b` cerca de 57 segundos (carga 10,4 s, leitura 25,1 s, geração 21,7 s): a leitura sozinha do `4b` já passa de um terço do tempo. O primeiro uso de um modelo paga a carga; depois ele fica 10 minutos na memória.
 
 **Por que a leitura é mais lenta no modelo maior, se o texto já foi extraído?** Porque "ler" não é copiar o texto: o modelo passa cada token por todas as suas camadas para montar a sua memória de atenção. É cálculo, e cresce com o tamanho do modelo. Com o mesmo texto (~575 tokens) e o modelo já carregado, o `gemma3:1b` leu a 71 tok/s e o `gemma4:e4b` a 15 tok/s. O resultado dessa leitura é próprio de cada modelo, então não é reaproveitado pelo seguinte. Só repetir exatamente o mesmo prompt no mesmo modelo, ainda carregado, torna a leitura quase instantânea (menos de meio segundo).
 

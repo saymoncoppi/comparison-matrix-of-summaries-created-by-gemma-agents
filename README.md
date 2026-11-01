@@ -99,6 +99,8 @@ O **Histórico** lista todos os resultados, do mais recente para o mais antigo: 
 
 ## Telas
 
+As capturas foram feitas com o arquivo `samples/exemplo_llm.txt` (um texto curto sobre LLMs, agentes e skills) e os modelos `gemma3:1b` e `gemma3:4b`, logo depois de iniciar os serviços, quando nenhum modelo estava carregado. Por isso os pills de carga mostram valores reais. Os tempos dependem da sua máquina (aqui, um notebook sem GPU).
+
 **Tela inicial:** escolha até dois modelos (listados do mais leve ao mais pesado), anexe o arquivo e clique em Executar.
 
 ![Tela inicial do chat](assets/home.png)
