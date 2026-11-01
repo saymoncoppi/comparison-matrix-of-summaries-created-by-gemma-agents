@@ -1,6 +1,6 @@
 # Resumos locais com Ollama + Gemma
 
-Chat local para **resumir PDF, TXT e MD** com modelos do [Ollama](https://ollama.com) rodando no seu computador, **sem enviar nada para a nuvem**. Você pode comparar vários modelos no mesmo arquivo, e cada resultado fica salvo num banco SQLite com um relatório em HTML.
+Chat local para **resumir PDF, TXT e MD** com modelos do [Ollama](https://ollama.com) rodando no seu computador, **sem enviar nada para a nuvem**. Você pode comparar vários modelos no mesmo arquivo, editar o prompt, escolher como o texto aparece no card, e cada resultado fica salvo num banco SQLite com um relatório em HTML.
 
 ## Requisitos
 
@@ -49,7 +49,7 @@ O chat avisa quando o arquivo não pode ser usado: tipo errado, PDF escaneado (s
 
 ## Menu, configurações, histórico e ajuda
 
-O botão de **três pontinhos** (⋮), no topo do chat, abre um menu com **Histórico**, **Configurações**, **Ajuda** e o **status do Ollama**. Histórico e Ajuda abrem numa janela (modal) sobre o chat. O status mostra uma bolinha **verde** (online, com a versão do Ollama) ou **vermelha** (offline).
+O botão de **três pontinhos** (⋮), no topo do chat, abre um menu com **Histórico**, **Configurações**, **Ajuda** e o **status do Ollama**. Os três primeiros abrem numa janela (modal) sobre o chat. O status mostra uma bolinha **verde** (online, com a versão do Ollama) ou **vermelha** (offline).
 
 O status se mantém **sempre atualizado** com o [htmx](https://htmx.org): a página consulta o Ollama ao carregar, **a cada 10 segundos** (enquanto a aba está visível), ao voltar para a aba e ao abrir o menu. Se o próprio chat sair do ar, a bolinha fica vermelha com "Servidor do chat inacessível".
 
@@ -77,23 +77,23 @@ Quando o modelo conclui, o card mostra sempre o texto inteiro, qualquer que seja
 **Clicar no item de status:**
 
 - com o Ollama **online**, abre um modal com os **modelos instalados**: parâmetros, quantização, família, contexto máximo, capacidades (por exemplo `completion`, `vision`, `thinking`), tamanho em disco, data de atualização e se o modelo está **na memória** agora (com o tamanho e a hora em que será descarregado). No topo há a versão do Ollama, o total de modelos, o espaço em disco ocupado e quantos estão na memória;
-- com o Ollama **offline**, o clique tenta consultar de novo. Para fechar, use o ✕, a tecla `Esc` ou clique fora da janela. O botão "Abrir em nova aba" abre a mesma página fora do chat.
+- com o Ollama **offline**, o clique tenta consultar de novo.
+
+**Fechar as janelas.** Em todas, use o ✕, a tecla `Esc` ou clique fora. Histórico, relatório, modelos instalados e ajuda também têm o botão "Abrir em nova aba", que abre a mesma página fora do chat.
 
 O **Histórico** lista todos os resultados, do mais recente para o mais antigo: número, data, arquivo, tipo, se foi resumo ou comparação e os modelos usados. **Clique em uma linha** para abrir o relatório daquele registro dentro da mesma janela, com o botão "← Voltar" para retornar à lista.
 
 ## Telas
 
-> As capturas de **análise em andamento** e do **menu** são de uma versão anterior da tela: nelas a barra de progresso era única, os pills de tempo apareciam todos no fim, o resumo não era recolhível, o botão principal se chamava "Gerar relatório", havia um campo "outro modelo" para digitar modelos, o menu não tinha "Configurações" e o status do Ollama mostrava também a quantidade de modelos. Hoje a barra tem três trechos, os pills aparecem a cada etapa e o status mostra só a versão.
-
-**Tela inicial:** escolha os modelos, anexe o arquivo e gere o relatório.
+**Tela inicial:** escolha os modelos, anexe o arquivo e clique em Executar.
 
 ![Tela inicial do chat](assets/home.png)
 
-**Análise em andamento:** o primeiro modelo concluiu e o segundo está carregando e lendo o texto, cada um com sua barra de progresso.
+**Análise em andamento:** o primeiro modelo concluiu (selo verde, pills de tempo, resumo recolhível e ícone de copiar) e o segundo está gerando o resultado. O texto aparece ao vivo, e o rodapé do cartão mostra a etapa atual, o cronômetro e a barra de três trechos (carga, leitura e geração).
 
 ![Comparação em andamento](assets/comparisson-first-model.png)
 
-**Análise concluída:** tempos de carga, leitura e geração por modelo, e os botões "Abrir relatório" e "Nova análise".
+**Análise concluída:** os pills de carga, leitura, geração e tokens por segundo de cada modelo, o texto dos resumos justificado e os botões "Abrir relatório" e "Nova análise".
 
 ![Comparação concluída](assets/comparisson-second-model.png)
 
@@ -101,9 +101,13 @@ O **Histórico** lista todos os resultados, do mais recente para o mais antigo: 
 
 ![Relatório com a matriz de comparação](assets/comparisson-report.png)
 
-**Menu (⋮):** histórico, ajuda e o status do Ollama.
+**Menu (⋮):** histórico, configurações, ajuda e o status do Ollama.
 
-![Menu com Histórico, Ajuda e o status do Ollama](assets/menu.png)
+![Menu com Histórico, Configurações, Ajuda e o status do Ollama](assets/menu.png)
+
+**Configurações:** o prompt (o padrão aparece em cinza quando o campo está em branco) e a apresentação da resposta.
+
+![Janela de Configurações](assets/settings.png)
 
 **Histórico:** todas as execuções; clique em uma linha para abrir o relatório.
 
@@ -151,7 +155,7 @@ Os tempos dependem da sua máquina. Em um notebook sem GPU, um PDF de uma págin
 - **Um modelo por vez na memória.** O serviço `ollama` usa `OLLAMA_MAX_LOADED_MODELS=1`: ao carregar o modelo seguinte, o Ollama descarrega o anterior. Com vários modelos carregados ao mesmo tempo (cada um fica 10 minutos), a RAM acaba, o cache de disco encolhe e a leitura fica mais lenta; no teste, o `gemma4:e4b` leu a 26 tok/s com três modelos carregados e a 42 tok/s com só ele. O custo é que repetir uma comparação recarrega o primeiro modelo.
 - **Resultado reproduzível.** Os modelos rodam com `temperature 0` e o modo de raciocínio desligado (`think: false`).
 - **Contexto ajustado ao texto.** O chat calcula o tamanho de contexto de que o arquivo precisa. Se o texto for grande demais (acima de 16384 tokens), o relatório traz um **aviso** de que o modelo viu só parte dele.
-- **Resumo cortado.** O resumo tem teto de 1024 tokens. Se o modelo chegar ao limite, a linha aparece marcada como "cortado".
+- **Resumo cortado.** O resumo tem teto de 1024 tokens. Se o modelo chegar ao limite, o cartão mostra o pill "resumo cortado" e a linha do relatório é marcada com "cortado em 1024 tokens".
 - **Execução cancelada não é salva.** Se você fechar a aba no meio de uma geração, o job para e nada é gravado.
 - **Prompt.** O padrão pede para resumir em português, sem saudação nem comentário final. Você pode trocá-lo em **Configurações** (veja acima); cada execução usa o prompt que estava no campo quando você clicou em **Executar**.
 
@@ -191,7 +195,11 @@ Para usar GPU NVIDIA, instale o NVIDIA Container Toolkit e descomente o bloco `d
 ## Problemas comuns
 
 - **"Ollama indisponível".** Veja `docker compose ps` e `docker compose logs ollama`. O serviço `ollama` precisa estar `healthy`.
-- **O primeiro uso de um modelo demora.** Ele está sendo baixado (a barra de progresso aparece no cartão). Se o download travar, rode `docker exec ollama ollama pull <modelo>`; ele retoma de onde parou.
+- **O primeiro uso de um modelo demora.** É a etapa "Carregando modelo": o Ollama coloca o modelo na memória, e isso leva de poucos segundos a algumas dezenas de segundos nos modelos grandes. Depois ele fica 10 minutos carregado, mas, como só um modelo fica na memória por vez, trocar de modelo recarrega.
+- **Quero outro modelo, mas ele não aparece.** O chat só lista modelos instalados. Rode `docker exec ollama ollama pull <modelo>` e recarregue a página. Se o download travar, rode o mesmo comando de novo: ele retoma de onde parou.
+- **O resumo só aparece no final (ou aos pedaços).** Confira **Configurações → Apresentação da resposta**: em "Texto Completo" o texto só entra quando a geração termina, e em "Palavras" e "Parágrafos" ele entra por partes.
+- **As configurações sumiram.** É o esperado: prompt e apresentação não são salvos e voltam ao padrão quando a página é recarregada.
+- **A Ajuda mostra um README antigo.** O arquivo é montado no container; se o editor o substituiu por um novo, reinicie com `docker compose restart chat`.
 - **"PDF sem texto extraível".** O PDF é uma imagem escaneada. É preciso passar por OCR antes (por exemplo com `ocrmypdf`).
 - **Muito lento.** Sem GPU o modelo roda na CPU. Use um modelo menor, feche outros programas e confira a memória livre. No WSL2, a memória é limitada pelo `.wslconfig`.
 - **Página sem estilo ou resumo sem formatação.** O visual vem de bibliotecas carregadas da internet (Tailwind, htmx e renderizador de Markdown). Sem rede o conteúdo continua legível, só mais simples, e o status do Ollama mostra "Status indisponível (htmx não carregou)".

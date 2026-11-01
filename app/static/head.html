@@ -27,6 +27,12 @@
 <script>
   if (matchMedia('(prefers-color-scheme: dark)').matches) document.documentElement.classList.add('dark');
 </script>
+<script>
+  // Páginas abertas no modal do chat (iframe): o Esc dentro delas não chega ao <dialog> do pai, então repassamos.
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && window.parent !== window) { try { window.parent.document.getElementById('modal').close(); } catch {} }
+  });
+</script>
 <style>
   /* Tokens do shadcn/ui (tema zinc) */
   :root {

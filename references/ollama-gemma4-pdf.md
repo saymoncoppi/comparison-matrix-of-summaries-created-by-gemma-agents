@@ -178,7 +178,6 @@ Na tela inicial, escolha os **modelos** (botões de baixo), anexe o arquivo (PDF
 
 Cada modelo roda **um de cada vez** e tem um cartão com o resumo sendo escrito ao vivo. O rodapé do cartão mostra a **etapa atual** (*Carregando modelo*, *Executando leitura*, *Gerando resultados*), um cronômetro e uma barra dividida em três trechos, um para cada etapa. Os **pills de tempo** (carga, leitura, geração e tokens por segundo) aparecem conforme cada etapa termina, e o selo do cartão vira **concluído** (verde) no fim. Na captura acima, o primeiro modelo já concluiu e o segundo está nas etapas iniciais.
 
-> As capturas desta seção foram feitas com uma versão anterior da tela: os pills apareciam todos de uma vez no fim da análise, o resumo não era recolhível e o botão principal se chamava *Gerar relatório*.
 
 ![Comparação concluída](../assets/comparisson-second-model.png)
 
@@ -194,7 +193,7 @@ O botão de três pontinhos (⋮) abre o menu:
 
 ![Menu com Histórico, Ajuda e o status do Ollama](../assets/menu.png)
 
-- **Histórico** e **Ajuda** abrem numa janela (modal) sobre o chat.
+- **Histórico**, **Configurações** e **Ajuda** abrem numa janela (modal) sobre o chat.
 - O item de baixo mostra o **status do Ollama** (bolinha verde = online, vermelha = offline) e se atualiza sozinho a cada 10 segundos.
 
 ![Histórico de resultados](../assets/history.png)
@@ -204,6 +203,10 @@ O **Histórico** lista todas as execuções, da mais recente para a mais antiga.
 ![Modelos instalados](../assets/models.png)
 
 Clicar no status **online** abre os **modelos instalados**: parâmetros, quantização, contexto máximo, capacidades (`completion`, `vision`, `thinking`...), tamanho em disco e quais estão **na memória** agora. Dá para ver, por exemplo, que o `gemma4:e4b` tem 7,5 bilhões de parâmetros e ocupa 6,1 GB, enquanto o `gemma3:1b` ocupa 769 MB.
+
+![Janela de Configurações](../assets/settings.png)
+
+Em **Configurações** você edita o **prompt**, a instrução enviada ao modelo antes do texto do arquivo (em branco, vale o padrão, mostrado em cinza). A mudança vale na próxima execução e não é salva. Há também a **apresentação da resposta**, que define como o resumo entra no card enquanto é gerado: por tokens, palavras, parágrafos ou só o texto completo no fim.
 
 ![Ajuda dentro do chat](../assets/help.png)
 
