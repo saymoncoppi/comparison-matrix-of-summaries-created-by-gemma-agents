@@ -2,7 +2,7 @@
 
 Procedimentos mostrados na live: https://www.youtube.com/live/Xm-MSieGhko
 
-> Este guia começa pelo passo a passo da live, feito no terminal (seções 1 a 4). O projeto evoluiu a partir dele: hoje existe um **chat web** que faz o mesmo resumo, compara vários modelos e guarda o histórico (seção 5). Para o manual completo do chat, veja o [README](../README.md). Os comandos abaixo devem ser executados na **pasta do projeto**, onde está o PDF de exemplo.
+> Este guia começa pelo passo a passo da live, feito no terminal (seções 1 a 4). O projeto evoluiu a partir dele: hoje existe um **chat web** que faz o mesmo resumo, compara vários modelos e guarda o histórico (seção 5). Para o manual completo do chat, veja o [README](../README.md). Os comandos abaixo devem ser executados na **pasta do projeto**, de onde se enxerga a pasta `samples/` com o PDF de exemplo.
 
 ## Índice
 
@@ -54,7 +54,7 @@ sudo apt install poppler-utils
 Extraia o texto do PDF e envie ao modelo via pipe:
 
 ```bash
-pdftotext "RFID, Python e rastreabilidade no agro brasileiro.pdf" - | ollama run gemma4:e4b "Resuma o texto recebido:"
+pdftotext "samples/RFID, Python e rastreabilidade no agro brasileiro.pdf" - | ollama run gemma4:e4b "Resuma o texto recebido:"
 ```
 
 Como funciona:
@@ -70,7 +70,7 @@ O nome do arquivo tem espaços e vírgula, por isso precisa ficar entre aspas. P
 O comando acima funciona, mas o Gemma 4 imprime o **raciocínio** antes da resposta (o bloco `Thinking...`) e, se você redirecionar a saída para um arquivo, as palavras podem sair quebradas ou repetidas nas quebras de linha. Duas opções do `ollama run` resolvem:
 
 ```bash
-pdftotext "RFID, Python e rastreabilidade no agro brasileiro.pdf" - | ollama run --hidethinking --nowordwrap gemma4:e4b "Resuma o texto recebido, sempre em português. Responda somente com o resumo, sem saudações, perguntas ou comentários finais."
+pdftotext "samples/RFID, Python e rastreabilidade no agro brasileiro.pdf" - | ollama run --hidethinking --nowordwrap gemma4:e4b "Resuma o texto recebido, sempre em português. Responda somente com o resumo, sem saudações, perguntas ou comentários finais."
 ```
 
 - `--hidethinking` esconde o raciocínio e mostra só a resposta.
@@ -117,7 +117,7 @@ docker exec -it ollama ollama run gemma4:e4b
 O `pdftotext` roda no host e o texto é enviado ao container pelo pipe (`-i` mantém o stdin aberto, sem `-t`):
 
 ```bash
-pdftotext "RFID, Python e rastreabilidade no agro brasileiro.pdf" - | docker exec -i ollama ollama run gemma4:e4b "Resuma o texto recebido:"
+pdftotext "samples/RFID, Python e rastreabilidade no agro brasileiro.pdf" - | docker exec -i ollama ollama run gemma4:e4b "Resuma o texto recebido:"
 ```
 
 ### Docker Compose
@@ -172,7 +172,7 @@ Isso sobe o Ollama, baixa o `gemma4:e4b` (cerca de 5,5 GB na primeira vez) e sob
 
 ![Tela inicial do chat](../assets/home.png)
 
-Na tela inicial, escolha os **modelos** (botões de baixo), anexe o arquivo (PDF, TXT ou MD, até 20 MB) e clique em **Executar**. Com um modelo você recebe um resumo; com dois ou mais, uma comparação. Para usar um modelo que ainda não está instalado, digite o nome no campo "outro modelo" e aperte Enter: ele é baixado sozinho.
+Na tela inicial, escolha os **modelos** (botões de baixo), anexe o arquivo (PDF, TXT ou MD, até 20 MB) e clique em **Executar**. Com um modelo você recebe um resumo; com dois ou mais, uma comparação. Para usar um modelo que ainda não está instalado, baixe-o antes (`docker exec ollama ollama pull gemma3:12b`) e recarregue a página.
 
 ![Comparação em andamento](../assets/comparisson-first-model.png)
 
@@ -182,7 +182,7 @@ Cada modelo roda **um de cada vez** e tem um cartão com o resumo sendo escrito 
 
 ![Comparação concluída](../assets/comparisson-second-model.png)
 
-Passe o mouse sobre um pill para ver um tooltip que explica o que ele mede. **Carga** é colocar o modelo na memória, **leitura** é o modelo processar o texto de entrada e **geração** é escrever o resumo (com a velocidade em tokens por segundo). O resumo fica dentro do cartão e pode ser **recolhido** pelo botão *Resumo*; depois de concluído, um ícone permite **copiar** o texto. Os botões **Abrir relatório** e o verde **Nova análise** aparecem abaixo.
+Passe o mouse sobre um pill para ver um tooltip que explica o que ele mede. **Carga** é colocar o modelo na memória, **leitura** é o modelo processar o texto de entrada e **geração** é escrever o resumo (com a velocidade em tokens por segundo). O resumo fica dentro do cartão e pode ser **recolhido** pelo botão *Resumo*; depois de concluído, um ícone permite **copiar** o texto. Os botões **Abrir relatório** e **Nova análise** aparecem abaixo.
 
 ![Relatório com a matriz de comparação](../assets/comparisson-report.png)
 
@@ -219,7 +219,9 @@ A **Ajuda** é o próprio [README](../README.md), renderizado dentro do chat.
 | O resultado some quando o terminal fecha. | Cada execução fica salva no SQLite (`outputs/resumos.db`) e aparece no histórico. |
 | Contexto padrão de 4096 tokens: textos maiores são cortados **sem aviso**. | O contexto é ajustado ao tamanho do texto (de 2048 a 16384 tokens), e o relatório avisa se o arquivo não coube. |
 | Raciocínio e saudações no meio da resposta, a menos que você use as dicas da seção 3. | `temperature 0`, raciocínio desligado e prompt que pede só o resumo, em português. |
-| Baixar modelo é um comando à parte. | Basta digitar o nome do modelo; o chat baixa e mostra o progresso. |
+| Baixar modelo é um comando à parte (`ollama pull`). | Continua sendo: o chat lista os modelos instalados. A API do chat, porém, baixa sozinha um modelo que ainda não existe. |
+| O prompt está dentro do comando; testar outro exige reescrevê-lo. | O menu **Configurações** mostra o texto da instrução (seção *Prompt*) e deixa você editá-lo a cada execução, sem salvar (o padrão aparece como *placeholder*). |
+| A resposta aparece como o terminal a imprimir, sem controle. | Em **Configurações → Apresentação da resposta** você escolhe como o texto entra no card: por tokens, palavras, parágrafos ou só o texto completo no fim. |
 
 Para consultar o banco sem instalar nada no host:
 

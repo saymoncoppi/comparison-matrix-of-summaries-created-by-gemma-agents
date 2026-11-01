@@ -30,8 +30,11 @@ README_PATH = Path(os.environ.get("README_PATH", Path(__file__).parent / "README
 ASSETS_DIR = Path(os.environ.get("ASSETS_DIR", Path(__file__).parent / "assets"))   # imagens do README
 ASSET_RE = re.compile(r"^[A-Za-z0-9._-]+\.png$")
 
-PROMPT = ("Resuma o texto recebido, sempre em português. Responda somente com o "
-          "resumo, sem saudações, perguntas ou comentários finais.")
+# Instrução enviada ao modelo antes do texto do arquivo. É o padrão: o menu "Prompt" do chat pode
+# trocá-la a cada execução (só em memória; nada é salvo).
+DEFAULT_PROMPT = ("Resuma o texto recebido, sempre em português. Responda somente com o "
+                  "resumo, sem saudações, perguntas ou comentários finais.")
+MAX_PROMPT = 4000             # caracteres
 MAX_UPLOAD = 20 * 1024 * 1024
 NUM_PREDICT = 1024            # teto de tokens gerados (também reservado no contexto)
 KEEP_ALIVE = "10m"            # quanto tempo o modelo fica na memória depois do último uso
@@ -166,10 +169,10 @@ def extract_text(data: bytes, ftype: str) -> str:
     return text
 
 
-def plan_context(text: str):
+def plan_context(text: str, prompt: str):
     """num_ctx ajustado ao texto; avisa se o texto não cabe (o padrão do Ollama,
     4096, truncaria sem avisar)."""
-    need = len(text) // 3 + len(PROMPT) // 3 + 100 + NUM_PREDICT
+    need = len(text) // 3 + len(prompt) // 3 + 100 + NUM_PREDICT
     ctx = min(max(-(-need // 1024) * 1024, CTX_MIN), CTX_MAX)
     warn = None
     if need > CTX_MAX:
@@ -286,7 +289,7 @@ def ensure_model(model, emit):
         emit({"type": "pull", "model": model, "status": ev.get("status", ""), "percent": pct})
 
 
-def run_model(model, text, ctx, emit):
+def run_model(model, text, ctx, emit, prompt):
     """Roda um modelo em três etapas, avisando o navegador a cada mudança:
     carga (modelo para a memória), leitura (processar o texto) e geração (escrever o resumo)."""
     ensure_model(model, emit)
@@ -303,7 +306,7 @@ def run_model(model, text, ctx, emit):
     emit({"type": "stage_done", "model": model, "stage": "load", "seconds": load_s})
 
     # Etapa 2, leitura: vai até o primeiro token. Etapa 3, geração: do primeiro token ao fim.
-    body = {"model": model, "prompt": f"{PROMPT}\n\n---\n{text}\n---", "stream": True,
+    body = {"model": model, "prompt": f"{prompt}\n\n---\n{text}\n---", "stream": True,
             "think": False, "keep_alive": KEEP_ALIVE, "options": opts}
     emit({"type": "stage", "model": model, "stage": "read"})
     t0 = time.monotonic()
@@ -655,6 +658,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, render_status_fragment(), "text/html; charset=utf-8")
         if path == "/api/models":
             return self._json(200, {"models": installed_models() or []})
+        if path == "/api/prompt":   # texto padrão, usado como placeholder do menu "Prompt"
+            return self._json(200, {"default": DEFAULT_PROMPT, "max": MAX_PROMPT})
         self._json(404, {"message": "não encontrado"})
 
     def do_POST(self):
@@ -667,16 +672,16 @@ class Handler(BaseHTTPRequestHandler):
             return self._json(404, {"message": "não encontrado"})
         q = urllib.parse.parse_qs(url.query)
         try:
-            models, filename, data = self._parse_request(q)
+            models, filename, prompt, data = self._parse_request(q)
             ftype, type_warn = detect_type(data, filename)
             text = extract_text(data, ftype)
-            ctx, ctx_warn = plan_context(text)
+            ctx, ctx_warn = plan_context(text, prompt)
         except UserError as err:
             return self._json(400, {"message": str(err)})
         info = {"filename": filename, "ftype": ftype, "size_bytes": len(data),
                 "chars": len(text), "ctx": ctx,
                 "warnings": [w for w in (type_warn, ctx_warn) if w]}
-        self._stream_job(models, text, ctx, info)
+        self._stream_job(models, text, ctx, info, prompt)
 
     def _parse_request(self, q):
         models = [m.strip() for m in (q.get("models", [""])[0]).split(",") if m.strip()]
@@ -693,9 +698,13 @@ class Handler(BaseHTTPRequestHandler):
             raise UserError("O arquivo está vazio.")
         if length > MAX_UPLOAD:
             raise UserError(f"Arquivo maior que o limite de {MAX_UPLOAD // 1024 // 1024} MB.")
-        return list(dict.fromkeys(models)), filename, self.rfile.read(length)
+        # Prompt desta execução (vindo do menu "Prompt"); em branco = padrão. Vale só para esta requisição.
+        prompt = (q.get("prompt", [""])[0]).strip()
+        if len(prompt) > MAX_PROMPT:
+            raise UserError(f"O prompt tem mais de {MAX_PROMPT} caracteres.")
+        return list(dict.fromkeys(models)), filename, prompt or DEFAULT_PROMPT, self.rfile.read(length)
 
-    def _stream_job(self, models, text, ctx, info):
+    def _stream_job(self, models, text, ctx, info, prompt):
         self.send_response(200)
         self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
         self.send_header("Cache-Control", "no-store")
@@ -715,7 +724,7 @@ class Handler(BaseHTTPRequestHandler):
                 for i, model in enumerate(models, 1):
                     emit({"type": "model_start", "model": model, "index": i, "total": len(models)})
                     try:
-                        r = run_model(model, text, ctx, emit)
+                        r = run_model(model, text, ctx, emit, prompt)
                         emit({"type": "model_done", **{k: v for k, v in r.items() if k != "summary"}})
                     except RuntimeError as err:
                         r = {"model": model, "ok": False, "error": str(err)}

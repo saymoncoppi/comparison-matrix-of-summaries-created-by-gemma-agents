@@ -1,0 +1,38 @@
+# Guia Rápido: Como Funcionam os Modelos de Linguagem (LLMs)
+
+*Documento ilustrativo de exemplo para testes de extração de texto*
+
+## 1. O que é um LLM?
+
+Um LLM (Large Language Model, ou Modelo de Linguagem de Grande Escala) é um programa treinado com enormes quantidades de texto para prever qual palavra vem a seguir. Com isso, ele consegue escrever, resumir, traduzir e responder perguntas.
+
+- **Usos comuns:** atendimento ao cliente, resumo de documentos e apoio à programação.
+- **Limitação:** o modelo pode errar ou inventar informações, por isso é bom revisar as respostas.
+
+## 2. Modelo, Agente e Skill: qual a diferença?
+
+Esses três termos aparecem juntos com frequência, mas representam coisas diferentes:
+
+- **Modelo:** é o "cérebro". Recebe um texto e devolve outro texto. Sozinho, não age no mundo.
+- **Agente:** é o modelo com ferramentas e um objetivo. Ele planeja, executa ações (buscar na web, ler arquivos) e repete até concluir a tarefa.
+- **Skill:** é um pacote de instruções e boas práticas para uma tarefa específica, como gerar um relatório em PDF. O agente consulta a skill quando precisa.
+
+## 3. O que é um token e como funciona o tokenizer?
+
+O modelo não lê letras nem palavras inteiras: ele lê tokens, que são pedaços de texto. O tokenizer é a etapa que corta o texto nesses pedaços e transforma cada um em um número.
+
+- **Exemplo:** "inteligência" pode virar os tokens "intelig" + "ência".
+- Cada token recebe um número (ID), por exemplo "intelig" = 48213.
+- Em português, uma palavra costuma gerar mais tokens do que em inglês.
+- O custo e o limite de contexto dos modelos são medidos em tokens.
+
+## 4. Como funciona o Transformer?
+
+O Transformer é a arquitetura por trás dos LLMs modernos. A ideia central é a atenção: ao ler uma frase, o modelo decide quais palavras são mais importantes para entender cada outra palavra.
+
+- **Embeddings:** cada token vira uma lista de números que representa seu significado.
+- **Atenção:** o modelo relaciona os tokens entre si. Em "O gato subiu no telhado porque ele estava com medo", a atenção liga "ele" a "gato".
+- **Camadas:** esse processo se repete em dezenas de camadas, refinando o entendimento.
+- **Saída:** o modelo calcula a probabilidade de cada próximo token e escolhe um, repetindo até terminar a resposta.
+
+**Resumo:** o tokenizer quebra o texto em tokens, o Transformer usa atenção para entender o contexto, o modelo gera a resposta, o agente usa o modelo para agir e a skill ensina o agente a fazer tarefas específicas.

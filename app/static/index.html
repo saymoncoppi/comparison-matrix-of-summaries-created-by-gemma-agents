@@ -10,9 +10,13 @@
   .chip:hover { background: hsl(var(--accent)); }
   .chip[aria-pressed="true"] { background: hsl(var(--primary)); color: hsl(var(--primary-foreground));
           border-color: hsl(var(--primary)); }
-  .input { height: 32px; border-radius: var(--radius); border: 1px solid hsl(var(--input)); background: transparent;
-           padding: 0 10px; font-size: 13px; width: 11rem; color: hsl(var(--foreground)); }
-  .input:focus { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+  .field { width: 100%; resize: vertical; min-height: 9rem; padding: 10px 12px; border-radius: var(--radius);
+           border: 1px solid hsl(var(--input)); background: transparent; color: hsl(var(--foreground));
+           font: inherit; font-size: 14px; line-height: 1.55; }
+  select.field { min-height: 0; height: 38px; padding: 0 10px; resize: none; width: min(100%, 18rem); background: hsl(var(--background)); }
+  .field::placeholder { color: hsl(var(--muted-foreground)); opacity: .85; }
+  .field:focus { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+  dialog.modal.modal-sm { width: min(680px, 95vw); height: fit-content; max-height: 88vh; }
   .drop[data-over="true"] { border-color: hsl(var(--ring)); background: hsl(var(--accent)); }
   [hidden] { display: none !important; }
 
@@ -99,6 +103,7 @@
         </button>
         <div id="menu" role="menu" class="card absolute right-0 z-20 mt-2 hidden w-80 p-1" style="box-shadow:0 8px 24px rgb(0 0 0 / .15)">
           <button type="button" role="menuitem" class="menu-item" data-open="/history" data-title="Histórico">Histórico</button>
+          <button type="button" role="menuitem" class="menu-item" data-action="settings">Configurações</button>
           <button type="button" role="menuitem" class="menu-item" data-open="/help" data-title="Ajuda">Ajuda</button>
           <div class="menu-sep" role="separator"></div>
           <!-- htmx: consulta ao carregar, a cada 10 s (aba visível), ao voltar para a aba e ao abrir o menu.
@@ -120,10 +125,7 @@
     <form id="form" class="card space-y-3 p-4">
       <div>
         <div class="mb-2 text-xs font-medium text-muted-foreground">Modelos</div>
-        <div class="flex flex-wrap items-center gap-2">
-          <span id="chips" class="flex flex-wrap gap-2"></span>
-          <input id="add-model" class="input" placeholder="outro modelo + Enter" autocomplete="off" spellcheck="false">
-        </div>
+        <div id="chips" class="flex flex-wrap gap-2"></div>
       </div>
       <div id="drop" class="drop flex items-center justify-between gap-3 rounded-lg border border-dashed border-input p-3">
         <div id="file-info" class="min-w-0 truncate text-sm text-muted-foreground"></div>
@@ -151,6 +153,43 @@
   <iframe id="modal-frame" title="Conteúdo"></iframe>
 </dialog>
 
+<dialog id="settings-modal" class="modal modal-sm" aria-labelledby="settings-title">
+  <div class="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+    <h2 id="settings-title" class="font-semibold">Configurações</h2>
+    <button id="settings-close" type="button" class="btn btn-outline btn-sm" style="width:36px;padding:0" aria-label="Fechar">✕</button>
+  </div>
+  <div class="space-y-6 overflow-y-auto p-4">
+    <section class="space-y-3" aria-labelledby="prompt-heading">
+      <h3 id="prompt-heading" class="text-sm font-semibold">Prompt</h3>
+      <p class="text-sm text-muted-foreground">
+        Instrução enviada ao modelo antes do texto do arquivo (o chat acrescenta o texto do arquivo depois dela, entre <code style="white-space:nowrap">---</code>).
+        Deixe em branco para usar o prompt padrão, mostrado em cinza. A mudança vale <strong>a partir da próxima execução</strong>.
+      </p>
+      <label for="prompt-text" class="sr-only">Texto do prompt</label>
+      <textarea id="prompt-text" class="field" rows="7" spellcheck="false" maxlength="4000"></textarea>
+      <div class="flex items-center justify-between gap-3">
+        <span id="prompt-status" class="text-xs text-muted-foreground" aria-live="polite"></span>
+        <button id="prompt-clear" type="button" class="btn btn-outline btn-sm">Usar o padrão</button>
+      </div>
+      <div id="prompt-busy" class="alert" hidden>Há uma análise em andamento. Ela continua com o prompt com que foi iniciada; o novo texto vale na próxima execução.</div>
+    </section>
+
+    <section class="space-y-3" aria-labelledby="present-heading">
+      <h3 id="present-heading" class="text-sm font-semibold">Apresentação da resposta</h3>
+      <p class="text-sm text-muted-foreground">Como o resumo é inserido no card enquanto o modelo o gera. Vale na hora, inclusive numa análise em andamento.</p>
+      <select id="present" class="field" aria-labelledby="present-heading">
+        <option value="tokens">Tokens</option>
+        <option value="palavras">Palavras</option>
+        <option value="paragrafos">Parágrafos</option>
+        <option value="completo">Texto Completo</option>
+      </select>
+      <p id="present-help" class="text-xs text-muted-foreground" aria-live="polite"></p>
+    </section>
+
+    <p class="text-xs text-muted-foreground">Nada aqui é salvo: ao recarregar a página, as configurações voltam ao padrão.</p>
+  </div>
+</dialog>
+
 <script src="https://cdnjs.cloudflare.com/ajax/libs/htmx/1.9.12/htmx.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.2/marked.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/dompurify/3.1.6/purify.min.js"></script>
@@ -164,7 +203,7 @@ const selected = new Set();
 
 function scroll() { const c = $('#chat'); c.scrollTop = c.scrollHeight; }
 function fmtSize(b) { return b > 1048576 ? (b / 1048576).toFixed(1) + ' MB' : (b / 1024).toFixed(1) + ' KB'; }
-function refreshButtons() { $('#send').disabled = busy || !file || selected.size === 0; }
+function refreshButtons() { $('#send').disabled = busy || !file || selected.size === 0; $('#prompt-busy').hidden = !busy; }
 
 // ---- modal (histórico, ajuda e relatório) -----------------------------------
 const modal = $('#modal'), frame = $('#modal-frame');
@@ -196,7 +235,10 @@ menuBtn.onclick = e => {
   e.stopPropagation(); setMenu(menu.classList.contains('hidden'));
   if (!menu.classList.contains('hidden')) { menu.querySelector('[role=menuitem]').focus(); statusItem && window.htmx && htmx.trigger(statusItem, 'refresh'); }
 };
-menu.addEventListener('click', e => { const b = e.target.closest('[data-open]'); if (!b) return; setMenu(false); openModal(b.dataset.open, b.dataset.title); });
+menu.addEventListener('click', e => {
+  const b = e.target.closest('[data-open], [data-action]'); if (!b) return; setMenu(false);
+  if (b.dataset.action === 'settings') openSettings(); else openModal(b.dataset.open, b.dataset.title);
+});
 
 // ---- status do Ollama (verde = online, vermelha = offline), mantido pelo htmx -----
 // O htmx só troca o conteúdo quando o servidor responde. Se o próprio chat sair do ar
@@ -216,6 +258,45 @@ setTimeout(() => { if (!window.htmx) showStatus('', 'Status indisponível (htmx 
 document.addEventListener('click', e => { if (!menu.contains(e.target)) setMenu(false); });
 document.addEventListener('keydown', e => { if (e.key === 'Escape' && !menu.classList.contains('hidden')) { setMenu(false); menuBtn.focus(); } });
 
+// ---- configurações: prompt e apresentação da resposta -------------------------------
+// Nada é salvo: os valores vivem só nos campos (memória da página) e recarregar volta ao padrão.
+// O prompt é lido no momento de cada execução; a apresentação é lida a cada atualização do card.
+const settingsModal = $('#settings-modal'), promptEl = $('#prompt-text'), present = $('#present');
+function promptStatus() {
+  const n = promptEl.value.trim().length;
+  $('#prompt-status').textContent = n ? `Prompt personalizado · ${n} caracteres` : 'Em branco: usando o prompt padrão';
+}
+const PRESENT_HELP = {
+  tokens: 'O texto aparece a cada token (pedaço de palavra) gerado pelo modelo.',
+  palavras: 'O texto aparece palavra por palavra: uma palavra só é mostrada quando termina.',
+  paragrafos: 'O texto aparece parágrafo por parágrafo: um parágrafo só é mostrado quando termina (linha em branco).',
+  completo: 'O card mostra só o andamento até a geração terminar; então o texto aparece inteiro.',
+};
+let refreshPresentation = () => {};   // o envio (abaixo) troca isto para redesenhar os cards da execução atual
+function presentHelp() { $('#present-help').textContent = PRESENT_HELP[present.value]; }
+
+// Quanto do texto já gerado (raw) aparece no card, conforme a apresentação. Concluído: sempre completo.
+function visibleText(raw, mode, done) {
+  if (done || mode === 'tokens') return raw;
+  if (mode === 'palavras') {   // só palavras completas: corta na última quebra de palavra
+    const i = Math.max(raw.lastIndexOf(' '), raw.lastIndexOf('\n'), raw.lastIndexOf('\t'));
+    return i < 0 ? '' : raw.slice(0, i + 1);
+  }
+  if (mode === 'paragrafos') {   // só parágrafos fechados por uma linha em branco
+    const re = /\n[ \t]*\n/g; let end = -1, m;
+    while ((m = re.exec(raw))) end = m.index + m[0].length;
+    return end < 0 ? '' : raw.slice(0, end);
+  }
+  return '';   // texto completo: nada até terminar
+}
+function openSettings() { promptStatus(); presentHelp(); settingsModal.showModal(); promptEl.focus(); }
+promptEl.addEventListener('input', promptStatus);
+present.addEventListener('change', () => { presentHelp(); refreshPresentation(); });
+$('#prompt-clear').onclick = () => { promptEl.value = ''; promptStatus(); promptEl.focus(); };
+$('#settings-close').onclick = () => settingsModal.close();
+settingsModal.addEventListener('click', e => { if (e.target === settingsModal) settingsModal.close(); });
+fetch('/api/prompt').then(r => r.json()).then(d => { promptEl.placeholder = d.default; promptEl.maxLength = d.max; }).catch(() => {});
+
 // ---- modelos ------------------------------------------------------------------
 function addChip(name, on) {
   if ([...$('#chips').children].some(c => c.dataset.model === name)) { if (on) toggle(name, true); return; }
@@ -229,21 +310,19 @@ function toggle(name, force) {
   on ? selected.add(name) : selected.delete(name);
   b.setAttribute('aria-pressed', on); refreshButtons();
 }
+function noModels() {   // sem campo para digitar: explica como instalar
+  $('#chips').replaceChildren(el('span', 'text-sm text-muted-foreground',
+    'Nenhum modelo instalado (ou o Ollama está offline). Para baixar um: docker exec ollama ollama pull gemma3:4b'));
+}
 async function loadModels() {
   try {
     const { models } = await (await fetch('/api/models')).json();
     models.forEach(m => addChip(m, false));
+    if (!models.length) noModels();
     const pref = models.find(m => m === 'gemma3:4b') || models[0];
     if (pref) toggle(pref, true);
-  } catch { /* sem lista: o usuário digita o nome */ }
+  } catch { noModels(); }
 }
-$('#add-model').addEventListener('keydown', e => {
-  if (e.key !== 'Enter') return;
-  e.preventDefault();
-  const v = e.target.value.trim();
-  if (/^[A-Za-z0-9][A-Za-z0-9._:\/-]{0,100}$/.test(v)) { addChip(v, true); e.target.value = ''; }
-});
-
 // ---- arquivo ------------------------------------------------------------------
 function setFile(f) {
   if (!f) return;
@@ -269,7 +348,7 @@ function userMsg() {
   const wrap = el('div', 'flex justify-end');
   const b = el('div', 'max-w-[85%] rounded-lg bg-primary p-3 text-sm text-primary-foreground');
   b.appendChild(el('div', 'font-medium', file.name));
-  b.appendChild(el('div', 'text-xs opacity-80', `${fmtSize(file.size)} · ${[...selected].join(', ')}`));
+  b.appendChild(el('div', 'text-xs opacity-80', `${fmtSize(file.size)} · ${[...selected].join(', ')}` + (promptEl.value.trim() ? ' · prompt personalizado' : '')));
   wrap.appendChild(b); $('#chat').appendChild(wrap); scroll();
 }
 
@@ -351,7 +430,8 @@ $('#form').addEventListener('submit', async e => {
   const status = el('div', 'card p-3 text-sm text-muted-foreground', 'Enviando arquivo…'); box.appendChild(status);
   const panels = {};
   let expected = 150;   // tokens esperados no resumo (estimativa, só para a barra de geração)
-  const url = '/api/summarize?models=' + encodeURIComponent(models.join(',')) + '&filename=' + encodeURIComponent(file.name);
+  const url = '/api/summarize?models=' + encodeURIComponent(models.join(',')) + '&filename=' + encodeURIComponent(file.name)
+    + (promptEl.value.trim() ? '&prompt=' + encodeURIComponent(promptEl.value.trim()) : '');   // lido agora: vale para esta execução
 
   // Um card por modelo. Rodapé: status da etapa + barra em 3 trechos (carga | leitura | geração).
   // Os pills (carga, leitura, geração, tok/s) entram conforme cada etapa termina. O resumo fica dentro
@@ -421,12 +501,16 @@ $('#form').addEventListener('submit', async e => {
   }
   function renderSummary(p) {   // markdown do modelo; sem as bibliotecas, mostra o texto puro
     p.renderT = null;
-    if (window.marked && window.DOMPurify) { p.text.classList.remove('whitespace-pre-wrap'); p.text.innerHTML = DOMPurify.sanitize(marked.parse(p.raw)); }
-    else { p.text.classList.add('whitespace-pre-wrap'); p.text.textContent = p.raw; }
+    const t = visibleText(p.raw, present.value, p.finished);
+    p.sumHead.hidden = p.fold.hidden = !t.trim();   // sem nada para mostrar ainda: só o andamento do rodapé
+    if (!t.trim()) return;
+    if (window.marked && window.DOMPurify) { p.text.classList.remove('whitespace-pre-wrap'); p.text.innerHTML = DOMPurify.sanitize(marked.parse(t)); }
+    else { p.text.classList.add('whitespace-pre-wrap'); p.text.textContent = t; }
   }
+  refreshPresentation = () => Object.values(panels).forEach(renderSummary);
   function finish(p, ok) {
     p.finished = true; clearInterval(p.timer);
-    if (p.renderT) { clearTimeout(p.renderT); renderSummary(p); }
+    clearTimeout(p.renderT); renderSummary(p);   // concluído: mostra o texto inteiro, em qualquer apresentação
     if (ok) p.segs.forEach((_, i) => segSet(p, i, 'done'));
     if (ok && p.raw) { p.copy.hidden = false; p.meta.textContent = '· ' + p.raw.trim().split(/\s+/).length + ' palavras'; }
     p.label.textContent = ''; p.elapsed.textContent = '';
@@ -455,7 +539,7 @@ $('#form').addEventListener('submit', async e => {
       if (ev.stage === 'load') { addPill(p, 'load', 'carga ' + secs); segSet(p, 0, 'done'); }
       if (ev.stage === 'read') { addPill(p, 'read', 'leitura ' + secs); segSet(p, 1, 'done'); }
     } else if (ev.type === 'token') {
-      p.tokens++; p.raw += ev.text; p.sumHead.hidden = false; p.fold.hidden = false;
+      p.tokens++; p.raw += ev.text;
       p.pct = Math.max(p.pct, Math.min(95, 100 * p.tokens / expected));   // estimativa; só chega a 100% ao concluir
       segSet(p, 2, 'det', p.pct); p.label.textContent = `Gerando resultados · ${p.tokens} tokens…`;
       if (!p.renderT) p.renderT = setTimeout(() => renderSummary(p), 120);
@@ -478,7 +562,7 @@ $('#form').addEventListener('submit', async e => {
       const row = el('div', 'flex gap-2');
       const open = el('button', 'btn', 'Abrir relatório'); open.type = 'button';
       open.onclick = () => openModal(ev.report, 'Relatório #' + ev.run_id);
-      const again = el('button', 'btn btn-success', 'Nova análise'); again.type = 'button'; again.onclick = newAnalysis;
+      const again = el('button', 'btn btn-outline', 'Nova análise'); again.type = 'button'; again.onclick = newAnalysis;
       row.append(open, again); box.appendChild(row);
     }
     scroll();

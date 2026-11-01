@@ -29,7 +29,7 @@ Para parar: `docker compose down`. Os modelos e o banco continuam guardados.
 
 ## Usar o chat
 
-1. **Escolha os modelos.** Os botões no rodapé listam os modelos já instalados. Clique para marcar ou desmarcar. Com **um** modelo você recebe um resumo; com **dois ou mais**, uma comparação. Para usar um modelo que ainda não está na lista, digite o nome (por exemplo `gemma3:12b`) no campo "outro modelo" e aperte Enter. Ele é baixado automaticamente na primeira vez.
+1. **Escolha os modelos.** Os botões no rodapé listam os modelos já instalados. Clique para marcar ou desmarcar. Com **um** modelo você recebe um resumo; com **dois ou mais**, uma comparação. Para usar um modelo que ainda não está na lista, instale-o antes (por exemplo `docker exec ollama ollama pull gemma3:12b`) e recarregue a página.
 2. **Anexe o arquivo.** Clique em "Escolher arquivo" ou arraste o arquivo para a área tracejada. Formatos aceitos: **PDF, TXT e MD**, até 20 MB.
 3. **Clique em "Executar".** O arquivo aparece como mensagem sua, e cada modelo ganha um cartão que mostra o resumo sendo escrito ao vivo, dentro do próprio cartão. Os modelos rodam **um de cada vez**; os que ainda não começaram aparecem como "na fila".
 4. **Acompanhe as etapas** de cada modelo. Cada análise passa por três etapas, e o rodapé do cartão mostra a etapa atual, um cronômetro e uma barra dividida em três trechos (carga, leitura e geração):
@@ -43,15 +43,36 @@ Para parar: `docker compose down`. Os modelos e o banco continuam guardados.
 
    **O resumo é recolhível.** Dentro do cartão, o botão **Resumo** (com a seta) recolhe e expande o texto, o que ajuda quando ele é longo. Depois que o modelo conclui, aparece ao lado o ícone de **copiar**, que leva o texto do resumo para a área de transferência (o ícone vira um ✓ por instantes para confirmar).
 5. **Abra o relatório.** Ao terminar surge o botão "Abrir relatório", que mostra o relatório numa janela (modal) sobre o chat.
-6. **Comece outra.** O botão verde **Nova análise**, ao lado de "Abrir relatório", limpa a conversa e o arquivo escolhido e mantém os modelos marcados.
+6. **Comece outra.** O botão **Nova análise**, ao lado de "Abrir relatório", limpa a conversa e o arquivo escolhido e mantém os modelos marcados.
 
 O chat avisa quando o arquivo não pode ser usado: tipo errado, PDF escaneado (sem texto), arquivo vazio, binário disfarçado de texto ou maior que o limite.
 
-## Menu, histórico e ajuda
+## Menu, configurações, histórico e ajuda
 
-O botão de **três pontinhos** (⋮), no topo do chat, abre um menu com **Histórico**, **Ajuda** e o **status do Ollama**. Histórico e Ajuda abrem numa janela (modal) sobre o chat. O status mostra uma bolinha **verde** (online, com a versão do Ollama) ou **vermelha** (offline).
+O botão de **três pontinhos** (⋮), no topo do chat, abre um menu com **Histórico**, **Configurações**, **Ajuda** e o **status do Ollama**. Histórico e Ajuda abrem numa janela (modal) sobre o chat. O status mostra uma bolinha **verde** (online, com a versão do Ollama) ou **vermelha** (offline).
 
 O status se mantém **sempre atualizado** com o [htmx](https://htmx.org): a página consulta o Ollama ao carregar, **a cada 10 segundos** (enquanto a aba está visível), ao voltar para a aba e ao abrir o menu. Se o próprio chat sair do ar, a bolinha fica vermelha com "Servidor do chat inacessível".
+
+**Configurações.** O item **Configurações** abre uma janela com duas opções. Nada nela é salvo: os valores vivem só na página, e ao recarregar tudo volta ao padrão.
+
+**1. Prompt.** É o texto da instrução enviada ao modelo antes do conteúdo do arquivo (o chat acrescenta o texto do arquivo depois dela, entre `---`). Para ajustar o prompt sem mexer no código:
+
+- o campo começa **em branco** e mostra, em cinza (como *placeholder*), o **prompt padrão** do projeto. Em branco, o padrão é usado;
+- digite o seu prompt e ele vale **já na próxima execução**, sem reiniciar nada. O botão **Usar o padrão** limpa o campo;
+- cada execução usa o prompt que estava no campo **no momento em que você clicou em Executar**, para todos os modelos daquela comparação, de modo que eles sejam comparados com a mesma instrução. Mudar o texto durante uma análise vale para a próxima, e a janela avisa isso;
+- quando o prompt é personalizado, a mensagem do arquivo na conversa mostra "prompt personalizado";
+- o limite é de 4000 caracteres.
+
+**2. Apresentação da resposta.** Define **como o resumo é inserido no card** enquanto o modelo o gera. Vale na hora, inclusive numa análise que já está rodando, porque só muda o que aparece na tela, e não o que o modelo recebe ou produz:
+
+| Opção | O que o card mostra durante a geração |
+|---|---|
+| **Tokens** (padrão) | O texto cresce a cada token (pedaço de palavra) gerado. |
+| **Palavras** | Só palavras completas: uma palavra aparece quando termina. |
+| **Parágrafos** | Só parágrafos completos: um parágrafo aparece quando o modelo o fecha com uma linha em branco. Se o modelo escrever um parágrafo só, ele aparece no fim. |
+| **Texto Completo** | Nada do texto até a geração terminar; então ele aparece inteiro. Enquanto isso, o rodapé do card mostra a etapa e o cronômetro. |
+
+Quando o modelo conclui, o card mostra sempre o texto inteiro, qualquer que seja a opção. O relatório também sempre mostra o texto completo.
 
 **Clicar no item de status:**
 
@@ -62,7 +83,7 @@ O **Histórico** lista todos os resultados, do mais recente para o mais antigo: 
 
 ## Telas
 
-> As capturas de **análise em andamento** e do **menu** são de uma versão anterior da tela: nelas a barra de progresso era única, os pills de tempo apareciam todos no fim, o resumo não era recolhível, o botão principal se chamava "Gerar relatório" e o status do Ollama mostrava também a quantidade de modelos. Hoje a barra tem três trechos, os pills aparecem a cada etapa e o status mostra só a versão.
+> As capturas de **análise em andamento** e do **menu** são de uma versão anterior da tela: nelas a barra de progresso era única, os pills de tempo apareciam todos no fim, o resumo não era recolhível, o botão principal se chamava "Gerar relatório", havia um campo "outro modelo" para digitar modelos, o menu não tinha "Configurações" e o status do Ollama mostrava também a quantidade de modelos. Hoje a barra tem três trechos, os pills aparecem a cada etapa e o status mostra só a versão.
 
 **Tela inicial:** escolha os modelos, anexe o arquivo e gere o relatório.
 
@@ -132,7 +153,7 @@ Os tempos dependem da sua máquina. Em um notebook sem GPU, um PDF de uma págin
 - **Contexto ajustado ao texto.** O chat calcula o tamanho de contexto de que o arquivo precisa. Se o texto for grande demais (acima de 16384 tokens), o relatório traz um **aviso** de que o modelo viu só parte dele.
 - **Resumo cortado.** O resumo tem teto de 1024 tokens. Se o modelo chegar ao limite, a linha aparece marcada como "cortado".
 - **Execução cancelada não é salva.** Se você fechar a aba no meio de uma geração, o job para e nada é gravado.
-- **Idioma.** O pedido é sempre resumir em português, sem saudação nem comentário final.
+- **Prompt.** O padrão pede para resumir em português, sem saudação nem comentário final. Você pode trocá-lo em **Configurações** (veja acima); cada execução usa o prompt que estava no campo quando você clicou em **Executar**.
 
 ## Onde ficam os dados
 
@@ -185,7 +206,7 @@ curl -N -X POST -H 'X-Upload: 1' --data-binary @arquivo.pdf \
   'http://localhost:8000/api/summarize?models=gemma3:1b,gemma3:4b&filename=arquivo.pdf'
 ```
 
-A resposta é uma linha de JSON por evento (início de cada modelo, texto gerado, tempos). O último evento, `{"type":"done","report":"/reports/N"}`, indica o relatório em `http://localhost:8000/reports/N`. O cabeçalho `X-Upload: 1` é obrigatório.
+A resposta é uma linha de JSON por evento (início de cada modelo, texto gerado, tempos). O último evento, `{"type":"done","report":"/reports/N"}`, indica o relatório em `http://localhost:8000/reports/N`. O cabeçalho `X-Upload: 1` é obrigatório. Para usar um prompt próprio nessa execução, acrescente `&prompt=` com o texto codificado na URL (até 4000 caracteres); sem ele, vale o prompt padrão. Se um dos modelos da lista não estiver instalado, a API o baixa sozinha.
 
 ## Estrutura do projeto
 
@@ -197,6 +218,7 @@ app/static/head.html      tema compartilhado (Tailwind + tokens do shadcn/ui)
 app/Dockerfile            imagem do chat (Python + poppler-utils)
 outputs/resumos.db        banco com os resultados
 assets/                   capturas de tela usadas neste README
+samples/                  arquivos de exemplo (pdf, md e txt) para testar o chat
 references/               material de apoio da live (guia do Ollama e links do evento)
 ```
 
@@ -207,4 +229,4 @@ O shadcn/ui não oferece versão de CDN. As páginas usam o Tailwind via CDN com
 - `references/ollama-gemma4-pdf.md`: guia do Ollama com Gemma 4 mostrado na live, do terminal até o chat, com as medições de desempenho na CPU.
 - `references/hacktoberfest-victor-gemma4.txt`: links do evento (live, slides, notebooks e guias do Gemma).
 - `assets/`: as capturas de tela da seção "Telas".
-- `RFID, Python e rastreabilidade no agro brasileiro.pdf` e `.docx`: documento de exemplo para testar.
+- `samples/`: arquivos de exemplo para testar. `RFID, Python e rastreabilidade no agro brasileiro.pdf` é o documento da palestra; `exemplo_llm.pdf`, `exemplo_llm.md` e `exemplo_llm.txt` são o mesmo texto curto sobre LLMs nos três formatos aceitos, úteis para comparar como cada tipo de arquivo é lido.
